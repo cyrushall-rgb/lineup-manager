@@ -104,7 +104,7 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
-# ====================== AVAILABLE PLAYERS TODAY (New Dedicated Page) ======================
+# ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
     st.caption("Select who is available for today's game. This controls Defense Rotation Planner and Create Lineup.")
@@ -125,10 +125,10 @@ if page == "Available Players Today":
 
     st.info("Tip: Save after making changes so other pages update automatically.")
 
-# ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Rules) ======================
+# ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Preferred Position Enforcement) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Strict bench rule enforced • Orioles ⚾")
+    st.caption("Fully manual • Only players with matching Preferred Position can be selected for each role • Strict bench rule • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -172,15 +172,16 @@ if page == "Defense Rotation Planner":
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
-                pitcher = st.selectbox("Pitcher", available or base_on_field, key=f"pitcher_{inning_num}")
+                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
+                pitcher = st.selectbox("Pitcher", pitcher_options or ["No eligible players"], key=f"pitcher_{inning_num}")
 
-                catcher_options = [p for p in available if p != pitcher]
-                catcher = st.selectbox("Catcher", catcher_options, key=f"catcher_{inning_num}")
+                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                catcher = st.selectbox("Catcher", catcher_options or ["No eligible players"], key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in available if p not in assigned]
+                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
@@ -523,4 +524,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • New Available Players Page • Strict Rules • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Preferred Position Enforcement • Orioles ⚾")
