@@ -121,14 +121,14 @@ if page == "Available Players Today":
         st.session_state.available_today = available_today
         with open(AVAILABLE_FILE, "w") as f:
             json.dump(available_today, f)
-        st.success("✅ Available players saved! This now affects Defense Rotation Planner and Create Lineup.")
+        st.success("✅ Available players saved!")
 
     st.info("Tip: Save after making changes so other pages update automatically.")
 
-# ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Preferred Position Enforcement) ======================
+# ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Only players with matching Preferred Position can be selected for each role • Strict bench rule • Orioles ⚾")
+    st.caption("Fully manual • Bench is single player • Strict bench rule • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -148,7 +148,7 @@ if page == "Defense Rotation Planner":
             st.session_state.num_innings = num_innings
             for i in range(1, num_innings + 1):
                 if f"bench_{i}" not in st.session_state:
-                    st.session_state[f"bench_{i}"] = []
+                    st.session_state[f"bench_{i}"] = "— No bench —"
 
         tabs = st.tabs([f"Inning {i}" for i in range(1, num_innings + 1)])
         other_positions = ["1B", "SS", "2B", "CF", "3B", "LF", "RF"]
@@ -163,13 +163,14 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                st.subheader("Bench this inning")
-                bench = st.multiselect("Select players to bench", 
-                                       team_players, 
-                                       default=st.session_state.get(f"bench_{inning_num}", []), 
-                                       key=f"bench_{inning_num}")
+                st.subheader("Bench")
+                bench_player = st.selectbox("Select player to bench", 
+                                            ["— No bench —"] + team_players, 
+                                            index=0 if st.session_state.get(f"bench_{inning_num}") == "— No bench —" else None,
+                                            key=f"bench_{inning_num}")
 
-                available = [p for p in base_on_field if p not in bench]
+                # Available players after removing bench
+                available = [p for p in base_on_field if p != bench_player or bench_player == "— No bench —"]
 
                 st.subheader("Pitcher & Catcher")
                 pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
@@ -194,10 +195,13 @@ if page == "Defense Rotation Planner":
 
                 for idx in range(num_innings):
                     inning_num = idx + 1
-                    bench = st.session_state.get(f"bench_{inning_num}", [])
+                    bench_player = st.session_state.get(f"bench_{inning_num}", "— No bench —")
+                    bench = [bench_player] if bench_player != "— No bench —" else []
+
                     for p in bench:
                         bench_history[p].append(inning_num)
 
+                    # Strict bench rules
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
                             st.error(f"❌ {p} cannot be benched in two consecutive innings")
@@ -215,7 +219,7 @@ if page == "Defense Rotation Planner":
 
                     row = {
                         "Inning": inning_num,
-                        "Bench": ", ".join(bench) if bench else "— No bench —",
+                        "Bench": bench_player if bench_player != "— No bench —" else "— No bench —",
                         "P": p,
                         "C": c,
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
@@ -229,13 +233,16 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
+                # Same validation as Save button (identical logic)
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
 
                 for idx in range(num_innings):
                     inning_num = idx + 1
-                    bench = st.session_state.get(f"bench_{inning_num}", [])
+                    bench_player = st.session_state.get(f"bench_{inning_num}", "— No bench —")
+                    bench = [bench_player] if bench_player != "— No bench —" else []
+
                     for p in bench:
                         bench_history[p].append(inning_num)
 
@@ -256,7 +263,7 @@ if page == "Defense Rotation Planner":
 
                     row = {
                         "Inning": inning_num,
-                        "Bench": ", ".join(bench) if bench else "— No bench —",
+                        "Bench": bench_player if bench_player != "— No bench —" else "— No bench —",
                         "P": p,
                         "C": c,
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
@@ -348,6 +355,7 @@ if page == "Create Lineup":
         if not position_fills:
             st.warning("⚠️ No rotation data found.")
 
+        # Tight printable card (same as before)
         batting_html = """
         <h2>Batting Order</h2>
         <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
@@ -524,4 +532,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Preferred Position Enforcement • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Single Bench Dropdown + Preferred Position Enforcement • Orioles ⚾")
