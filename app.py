@@ -49,6 +49,7 @@ def load_data():
 
 roster, games, season_stats = load_data()
 
+# Persistent available players
 if os.path.exists(AVAILABLE_FILE):
     try:
         with open(AVAILABLE_FILE, "r") as f:
@@ -322,6 +323,7 @@ if page == "Create Lineup":
     
     st.subheader("Step 2: Manual Batting Order")
     
+    # Auto-Fill buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Auto-Fill Batting Order - Value Strategy"):
@@ -383,13 +385,11 @@ if page == "Create Lineup":
 
     new_order = st.session_state.batting_order.copy()
 
-    # Calculate currently used players
-    used = [p for p in new_order if p != ""]
-
     for i in range(n):
         spot = i + 1
         current = new_order[i]
-        options = [""] + [p for p in available_today if p not in used or p == current]
+        used = [p for p in new_order if p != "" and p != current]
+        options = [""] + [p for p in available_today if p not in used]
         
         selected = st.selectbox(
             f"Batting Spot {spot}",
@@ -405,10 +405,15 @@ if page == "Create Lineup":
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # ====================== CLEAR BUTTON ======================
+    # ====================== CLEAR BUTTON (Fixed) ======================
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
-        st.rerun()   # ← This forces immediate refresh
+        # Delete widget states to force reset
+        for i in range(n):
+            key = f"batting_spot_{i}"
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()   # Force full refresh
 
     if st.button("📥 Download Batting Order CSV"):
         csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
@@ -619,4 +624,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Fixed Spot Dropdowns + Clear Button • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Fixed Clear Button • Orioles ⚾")
