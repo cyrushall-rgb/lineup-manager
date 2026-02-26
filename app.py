@@ -80,10 +80,33 @@ def can_play(preferred_pos, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
+# ====================== ROSTER & STATS ======================
+if page == "Roster & Stats":
+    st.header("Roster")
+    st.caption("Columns: Name, Jersey, League Age, Preferred Positions (P, C, 1B, INF, OF, etc.)")
+    edited = st.data_editor(roster, num_rows="dynamic", use_container_width=True)
+    if st.button("💾 Save Roster"):
+        edited.to_excel(ROSTER_FILE, index=False)
+        st.success("Saved!")
+
+    st.header("Import GameChanger Season Stats CSV")
+    gc_file = st.file_uploader("Upload GC CSV", type="csv")
+    if gc_file:
+        gc = pd.read_csv(gc_file)
+        if 'Player' in gc.columns:
+            gc['Player_lower'] = gc['Player'].str.lower().str.strip()
+            roster['name_lower'] = roster['name'].str.lower().str.strip()
+            keep = [c for c in ['H', 'AB', 'K', 'AVG', 'OBP', 'SLG', 'OPS', 'IP', 'ERA'] if c in gc.columns]
+            merged = roster.merge(gc[['Player_lower'] + keep], left_on='name_lower', right_on='Player_lower', how='left')
+            season_stats = merged[['name'] + keep].copy()
+            season_stats.to_excel(STATS_FILE, index=False)
+            st.success("✅ GC stats merged!")
+            st.dataframe(season_stats)
+
 # ====================== DEFENSE ROTATION PLANNER (Live connected tabs) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Bench selections are now connected across innings • No player benches twice until everyone has sat once • Orioles ⚾")
+    st.caption("Bench selections are connected across innings • No player benches twice until everyone has sat once • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -112,7 +135,7 @@ if page == "Defense Rotation Planner":
                     bench = []
                     for p in sorted_players:
                         if len(bench) >= bench_size: break
-                        if not all_sat_once or sit_count[p] < 2:   # No second bench until everyone has sat once
+                        if not all_sat_once or sit_count[p] < 2:   # Strict: no second bench until everyone has sat once
                             bench.append(p)
                     if len(bench) < bench_size:
                         for p in sorted_players:
@@ -270,7 +293,6 @@ if page == "Create Lineup":
         st.download_button("Download for GameChanger", csv, f"batting_order_{game_date}.csv", "text/csv")
 
     if st.button("🖨️ Printable Game Day Card"):
-        # (tight printable card code from previous version - unchanged)
         position_fills = {}
         if os.path.exists(ROTATION_FILE):
             try:
@@ -299,11 +321,180 @@ if page == "Create Lineup":
         if not position_fills:
             st.warning("⚠️ No rotation data found.")
 
-        # (batting_html and season_html with tight spacing from last version)
-        # ... (kept the same tight version you liked)
+        batting_html = """
+        <h2>Batting Order</h2>
+        <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
+        <tr>
+            <th style="width:6%; text-align:center;">#</th>
+            <th style="width:6%; text-align:center;">#</th>
+            <th style="width:28%;">Player</th>
+            <th style="width:8%; text-align:center;">1</th>
+            <th style="width:8%; text-align:center;">2</th>
+            <th style="width:8%; text-align:center;">3</th>
+            <th style="width:8%; text-align:center;">4</th>
+            <th style="width:8%; text-align:center;">5</th>
+            <th style="width:8%; text-align:center;">6</th>
+        </tr>
+        """
+        for i, player in enumerate(edited_batting["Player"]):
+            jersey = roster.loc[roster['name'] == player, 'jersey'].iloc[0] if not roster[roster['name'] == player].empty else "—"
+            jersey = str(jersey) if pd.notna(jersey) else "—"
+            pos1 = position_fills.get(player, [""]*6)[0]
+            pos2 = position_fills.get(player, [""]*6)[1]
+            pos3 = position_fills.get(player, [""]*6)[2]
+            pos4 = position_fills.get(player, [""]*6)[3]
+            pos5 = position_fills.get(player, [""]*6)[4]
+            pos6 = position_fills.get(player, [""]*6)[5]
+            batting_html += f"""
+            <tr>
+                <td style="text-align:center; font-weight:bold;">{i+1}</td>
+                <td style="text-align:center;">{jersey}</td>
+                <td>{player}</td>
+                <td style="text-align:center;">{pos1}</td>
+                <td style="text-align:center;">{pos2}</td>
+                <td style="text-align:center;">{pos3}</td>
+                <td style="text-align:center;">{pos4}</td>
+                <td style="text-align:center;">{pos5}</td>
+                <td style="text-align:center;">{pos6}</td>
+            </tr>
+            """
+        batting_html += "</table>"
 
+        season_html = """
+        <br><br><br>
+        <h2>Season Stats</h2>
+        <table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:6.8px;">
+        <tr>
+            <th>Player</th>
+            <th>OBP</th>
+            <th>OPS</th>
+            <th>BABIP</th>
+            <th>C</th>
+            <th>1B</th>
+            <th>2B</th>
+            <th>3B</th>
+            <th>SS</th>
+            <th>LF</th>
+            <th>CF</th>
+            <th>RF</th>
+            <th>IP</th>
+            <th>FIP</th>
+        </tr>
+        """
+        for _, row in roster.iterrows():
+            name = row['name']
+            stat_row = season_stats[season_stats['name'] == name] if not season_stats.empty and 'name' in season_stats.columns else pd.DataFrame()
+            obp = round(stat_row['OBP'].iloc[0], 3) if not stat_row.empty and 'OBP' in stat_row.columns else "—"
+            ops = round(stat_row['OPS'].iloc[0], 3) if not stat_row.empty and 'OPS' in stat_row.columns else "—"
+            babip = "—"
+            c_inn = "—"
+            ip = round(stat_row['IP'].iloc[0], 1) if not stat_row.empty and 'IP' in stat_row.columns else "—"
+            fip = "—"
+            season_html += f"""
+            <tr>
+                <td>{name}</td>
+                <td>{obp}</td>
+                <td>{ops}</td>
+                <td>{babip}</td>
+                <td>{c_inn}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>{ip}</td>
+                <td>{fip}</td>
+            </tr>
+            """
+        season_html += "</table>"
+
+        full_html = f"""
+        <html><head><title>Lineup Card - {game_date}</title>
+        <style>
+            body {{font-family: Arial, sans-serif; margin: 25px; color: #000; background: white;}}
+            h1 {{text-align: center; color: #fc4c02; font-size: 32px; margin-bottom: 8px;}}
+            h2 {{color: #000; border-bottom: 3px solid #fc4c02; padding-bottom: 6px; font-size: 18px;}}
+            table {{width: 100%; border-collapse: collapse; margin: 15px 0;}}
+            th, td {{border: 1px solid #333; padding: 8px; text-align: left;}}
+            th {{background: #fc4c02; color: white;}}
+            @page {{ margin: 15mm; }}
+        </style></head><body>
+        <h1>Lineup Card</h1>
+        <p style="text-align:center; font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
+        
+        <div>
+        {batting_html}
+        </div>
+        
+        <div style="margin-top:25px;">
+        {season_html}
+        </div>
+        </body></html>
+        """
+
+        st.download_button(
+            "📥 Download HTML (open & print)",
+            full_html,
+            f"lineup_card_{game_date}.html",
+            "text/html"
+        )
         st.success("✅ Printable Lineup Card ready!")
 
-# (Log Game, Pitcher Workload, Reports pages unchanged)
+# ====================== LOG GAME, PITCHER WORKLOAD, REPORTS ======================
+if page == "Log Game":
+    st.header("Log Completed Game - Positions + Bench")
+    date = st.date_input("Date", datetime.today())
+    opponent = st.text_input("Opponent")
+    if roster.empty:
+        st.warning("Add players first!")
+    else:
+        positions = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+        pt_template = pd.DataFrame({"Player": roster["name"].tolist()})
+        for pos in positions:
+            pt_template[f"{pos}_innings"] = 0.0
+        pt_template["Bench_innings"] = 0.0
+        pt_template["Pitches_Thrown"] = 0
+        edited_pt = st.data_editor(pt_template, use_container_width=True, hide_index=True)
+        if st.button("💾 Save Game & Update All Trackers"):
+            innings_cols = [f"{pos}_innings" for pos in positions] + ["Bench_innings"]
+            mask = (edited_pt[innings_cols].sum(axis=1) > 0) | (edited_pt["Pitches_Thrown"] > 0)
+            played = edited_pt[mask].copy()
+            if not played.empty:
+                played["date"] = date
+                played["opponent"] = opponent
+                games = pd.concat([games, played], ignore_index=True)
+                games.to_excel(GAMES_FILE, index=False)
+                st.success("Game saved!")
+                st.rerun()
+
+if page == "Pitcher Workload":
+    st.header("Pitcher Workload & Rest")
+    if not games.empty and "Pitches_Thrown" in games.columns:
+        fig = px.bar(games[games["Pitches_Thrown"] > 0], x="date", y="Pitches_Thrown", color="Player", title="Pitches by Game")
+        st.plotly_chart(fig, use_container_width=True)
+
+if page == "Reports":
+    st.header("Season Reports - Positions + Bench")
+    if not games.empty:
+        innings_cols = [col for col in games.columns if col.endswith("_innings")]
+        agg = {col: "sum" for col in innings_cols}
+        if "Pitches_Thrown" in games.columns:
+            agg["Pitches_Thrown"] = "sum"
+        summary = games.groupby("Player").agg(agg).round(1).reset_index()
+        summary["Total_Field_Innings"] = summary[[c for c in innings_cols if c != "Bench_innings"]].sum(axis=1)
+        st.dataframe(summary, use_container_width=True)
+        fig = px.bar(summary, x="Player", y="Total_Field_Innings", title="Total Field Innings")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No games logged yet.")
+
+    st.divider()
+    st.subheader("🗑️ Danger Zone")
+    st.warning("This will permanently delete ALL logged games and pitch counts.")
+    if st.checkbox("I understand this cannot be undone"):
+        if st.button("🗑️ Permanently Clear ALL Game Data", type="primary"):
+            try:
+                if os.path.exists(GAMES_FILE):
+                    os.remove(GAMES_FILE)
+                st.success("✅ All game data has been permanently deleted!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 st.sidebar.caption("v1.0 • Lineup Manager • Connected Bench Logic • One-Page Card • Orioles ⚾")
