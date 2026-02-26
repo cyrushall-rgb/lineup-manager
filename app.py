@@ -104,7 +104,7 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
-# ====================== AVAILABLE PLAYERS TODAY (Checkbox Table) ======================
+# ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
     st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
@@ -315,7 +315,7 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP (Fixed Spots + Dropdowns) ======================
+# ====================== CREATE LINEUP (Fixed Dropdowns + Clear Button) ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
@@ -406,6 +406,11 @@ if page == "Create Lineup":
     if any(new_order):
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # ====================== CLEAR BUTTON ======================
+    if st.button("🗑️ Clear Lineup Selections"):
+        st.session_state.batting_order = [""] * n
+        st.success("✅ Lineup cleared!")
 
     if st.button("📥 Download Batting Order CSV"):
         csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
@@ -616,4 +621,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Fixed Spot Dropdowns • Checkbox Available Players • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Clear Lineup Button • Orioles ⚾")
