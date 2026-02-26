@@ -104,14 +104,13 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
-# ====================== AVAILABLE PLAYERS TODAY (New Checkbox Table) ======================
+# ====================== AVAILABLE PLAYERS TODAY (Checkbox Table) ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
     st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
 
     all_players = sorted(roster['name'].tolist()) if not roster.empty else []
 
-    # Initialize or update the dataframe for editing
     if 'available_df' not in st.session_state or len(st.session_state.available_df) != len(all_players):
         current_available = st.session_state.get('available_today', all_players)
         df = pd.DataFrame({
@@ -135,8 +134,8 @@ if page == "Available Players Today":
         st.session_state.available_today = selected
         with open(AVAILABLE_FILE, "w") as f:
             json.dump(selected, f)
-        st.session_state.available_df = edited_df  # save the edited state
-        st.success("✅ Available players saved! This now affects Defense Rotation Planner and Create Lineup.")
+        st.session_state.available_df = edited_df
+        st.success("✅ Available players saved!")
 
 # ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
@@ -316,17 +315,17 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP ======================
+# ====================== CREATE LINEUP (Fixed Spots + Dropdowns) ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
     
     available_today = st.session_state.get('available_today', roster['name'].tolist())
     
-    st.subheader("Step 2: Batting Order")
+    st.subheader("Step 2: Manual Batting Order")
     
+    # Auto-Fill buttons
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         if st.button("Auto-Fill Batting Order - Value Strategy"):
             if season_stats.empty:
@@ -379,13 +378,37 @@ if page == "Create Lineup":
                                reverse=True)
                 st.session_state.batting_order = order
                 st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
-    
-    batting_order = st.session_state.get('batting_order', available_today)
-    batting_df = pd.DataFrame({"Batting Spot": range(1, len(batting_order) + 1), "Player": batting_order})
-    edited_batting = st.data_editor(batting_df, use_container_width=True)
-    
+
+    # ====================== FIXED SPOT DROPDOWN LINEUP ======================
+    n = len(available_today)
+    if 'batting_order' not in st.session_state or len(st.session_state.batting_order) != n:
+        st.session_state.batting_order = [""] * n
+
+    new_order = st.session_state.batting_order.copy()
+
+    for i in range(n):
+        spot = i + 1
+        current = new_order[i]
+        used = [p for p in new_order if p != "" and p != current]
+        options = [""] + [p for p in available_today if p not in used]
+        
+        selected = st.selectbox(
+            f"Batting Spot {spot}",
+            options=options,
+            index=options.index(current) if current in options else 0,
+            key=f"batting_spot_{i}"
+        )
+        new_order[i] = selected
+
+    st.session_state.batting_order = new_order
+
+    # Show current lineup
+    if any(new_order):
+        df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
     if st.button("📥 Download Batting Order CSV"):
-        csv = edited_batting.to_csv(index=False)
+        csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
         st.download_button("Download for GameChanger", csv, f"batting_order_{game_date}.csv", "text/csv")
 
     if st.button("🖨️ Printable Game Day Card"):
@@ -432,7 +455,7 @@ if page == "Create Lineup":
             <th style="width:8%; text-align:center;">6</th>
         </tr>
         """
-        for i, player in enumerate(edited_batting["Player"]):
+        for i, player in enumerate(new_order):
             jersey = roster.loc[roster['name'] == player, 'jersey'].iloc[0] if not roster[roster['name'] == player].empty else "—"
             jersey = str(jersey) if pd.notna(jersey) else "—"
             pos1 = position_fills.get(player, [""]*6)[0]
@@ -593,4 +616,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Checkbox Available Players • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Fixed Spot Dropdowns • Checkbox Available Players • Orioles ⚾")
