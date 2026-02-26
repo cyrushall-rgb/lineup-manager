@@ -125,10 +125,10 @@ if page == "Available Players Today":
 
     st.info("Tip: Save after making changes so other pages update automatically.")
 
-# ====================== DEFENSE ROTATION PLANNER (Live Connected Bench Dropdown) ======================
+# ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Bench is single dropdown • Strict live bench rule • Orioles ⚾")
+    st.caption("Fully manual • Exact number of bench players forced • Strict bench rules • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -137,7 +137,9 @@ if page == "Defense Rotation Planner":
 
     team_players = st.multiselect("Team Players", available_today, default=available_today[:num_team])
 
+    required_bench = max(0, num_team - 9)
     pool_needed = max(0, 9 - len(team_players))
+
     if pool_needed > 0:
         st.info(f"✅ Using {pool_needed} Pool Player(s)")
 
@@ -148,7 +150,7 @@ if page == "Defense Rotation Planner":
             st.session_state.num_innings = num_innings
             for i in range(1, num_innings + 1):
                 if f"bench_{i}" not in st.session_state:
-                    st.session_state[f"bench_{i}"] = "— No bench —"
+                    st.session_state[f"bench_{i}"] = []
 
         tabs = st.tabs([f"Inning {i}" for i in range(1, num_innings + 1)])
         other_positions = ["1B", "SS", "2B", "CF", "3B", "LF", "RF"]
@@ -163,28 +165,13 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # Calculate current bench counts from previous tabs
-                bench_history = {p: 0 for p in team_players}
-                for prev_inning in range(1, inning_num):
-                    prev_bench = st.session_state.get(f"bench_{prev_inning}", "— No bench —")
-                    if prev_bench != "— No bench —":
-                        bench_history[prev_bench] += 1
+                st.subheader(f"Bench (select exactly {required_bench} players)")
+                bench = st.multiselect("Select players to bench", 
+                                       team_players, 
+                                       default=st.session_state.get(f"bench_{inning_num}", []), 
+                                       key=f"bench_{inning_num}")
 
-                all_have_sat_once = all(count >= 1 for count in bench_history.values())
-
-                # Eligible for bench in this inning
-                eligible_bench = []
-                for p in team_players:
-                    if bench_history[p] == 0 or all_have_sat_once:
-                        eligible_bench.append(p)
-
-                st.subheader("Bench")
-                bench_player = st.selectbox("Select player to bench", 
-                                            ["— No bench —"] + eligible_bench, 
-                                            key=f"bench_{inning_num}")
-
-                # Available players after removing bench
-                available = [p for p in base_on_field if p != bench_player or bench_player == "— No bench —"]
+                available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
                 pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
@@ -209,8 +196,12 @@ if page == "Defense Rotation Planner":
 
                 for idx in range(num_innings):
                     inning_num = idx + 1
-                    bench_player = st.session_state.get(f"bench_{inning_num}", "— No bench —")
-                    bench = [bench_player] if bench_player != "— No bench —" else []
+                    bench = st.session_state.get(f"bench_{inning_num}", [])
+
+                    # Enforce exact number of bench players
+                    if len(bench) != required_bench:
+                        st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
+                        valid = False
 
                     for p in bench:
                         bench_history[p].append(inning_num)
@@ -232,7 +223,7 @@ if page == "Defense Rotation Planner":
 
                     row = {
                         "Inning": inning_num,
-                        "Bench": bench_player if bench_player != "— No bench —" else "— No bench —",
+                        "Bench": ", ".join(bench) if bench else "— No bench —",
                         "P": p,
                         "C": c,
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
@@ -252,8 +243,11 @@ if page == "Defense Rotation Planner":
 
                 for idx in range(num_innings):
                     inning_num = idx + 1
-                    bench_player = st.session_state.get(f"bench_{inning_num}", "— No bench —")
-                    bench = [bench_player] if bench_player != "— No bench —" else []
+                    bench = st.session_state.get(f"bench_{inning_num}", [])
+
+                    if len(bench) != required_bench:
+                        st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
+                        valid = False
 
                     for p in bench:
                         bench_history[p].append(inning_num)
@@ -275,7 +269,7 @@ if page == "Defense Rotation Planner":
 
                     row = {
                         "Inning": inning_num,
-                        "Bench": bench_player if bench_player != "— No bench —" else "— No bench —",
+                        "Bench": ", ".join(bench) if bench else "— No bench —",
                         "P": p,
                         "C": c,
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
@@ -543,4 +537,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Live Connected Bench Dropdown • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Forced Bench Count + Preferred Position Enforcement • Orioles ⚾")
