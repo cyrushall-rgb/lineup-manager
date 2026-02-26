@@ -61,6 +61,7 @@ elif 'available_today' not in st.session_state:
 
 page = st.sidebar.selectbox("Menu", [
     "Roster & Stats",
+    "Available Players Today",
     "Defense Rotation Planner",
     "Create Lineup",
     "Log Game",
@@ -103,10 +104,31 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
+# ====================== AVAILABLE PLAYERS TODAY (New Dedicated Page) ======================
+if page == "Available Players Today":
+    st.header("Available Players Today")
+    st.caption("Select who is available for today's game. This controls Defense Rotation Planner and Create Lineup.")
+
+    all_players = roster['name'].tolist() if not roster.empty else []
+    
+    available_today = st.multiselect(
+        "Who is Available Today?", 
+        all_players, 
+        default=st.session_state.get('available_today', all_players)
+    )
+    
+    if st.button("💾 Save Available Players"):
+        st.session_state.available_today = available_today
+        with open(AVAILABLE_FILE, "w") as f:
+            json.dump(available_today, f)
+        st.success("✅ Available players saved! This now affects Defense Rotation Planner and Create Lineup.")
+
+    st.info("Tip: Save after making changes so other pages update automatically.")
+
 # ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Rules) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • One player = one role per inning • Strict bench rule enforced • Orioles ⚾")
+    st.caption("Fully manual • Strict bench rule enforced • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -147,7 +169,6 @@ if page == "Defense Rotation Planner":
                                        default=st.session_state.get(f"bench_{inning_num}", []), 
                                        key=f"bench_{inning_num}")
 
-                # Available after removing bench players
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
@@ -163,7 +184,6 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        # Save and Validate with strict cross-inning bench rule
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
@@ -177,7 +197,6 @@ if page == "Defense Rotation Planner":
                     for p in bench:
                         bench_history[p].append(inning_num)
 
-                    # Strict bench rules
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
                             st.error(f"❌ {p} cannot be benched in two consecutive innings")
@@ -209,7 +228,6 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                # Same strict validation as Save
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
@@ -260,17 +278,9 @@ if page == "Defense Rotation Planner":
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
-    all_players = roster['name'].tolist() if not roster.empty else []
     
-    st.subheader("Step 1: Who is Available Today?")
-    available_today = st.multiselect("Available Players (ALL will bat)", all_players, default=st.session_state.available_today)
+    available_today = st.session_state.get('available_today', roster['name'].tolist())
     
-    if st.button("💾 Save Available Players"):
-        st.session_state.available_today = available_today
-        with open(AVAILABLE_FILE, "w") as f:
-            json.dump(available_today, f)
-        st.success("✅ Available players saved!")
-
     st.subheader("Step 2: Batting Order")
     if st.button("Auto-Fill Batting Order - Value Strategy"):
         if season_stats.empty:
@@ -513,4 +523,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Fully Manual + Strict Rules • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • New Available Players Page • Strict Rules • Orioles ⚾")
