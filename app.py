@@ -125,7 +125,7 @@ if page == "Available Players Today":
 
     st.info("Tip: Save after making changes so other pages update automatically.")
 
-# ====================== DEFENSE ROTATION PLANNER (Live Bench Filtering) ======================
+# ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
     st.caption("Fully manual • Bench dropdown only shows eligible players • Strict rules enforced • Orioles ⚾")
@@ -165,7 +165,7 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # === LIVE BENCH HISTORY FROM PREVIOUS INNINGS ===
+                # Live bench eligibility
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -173,12 +173,8 @@ if page == "Defense Rotation Planner":
                         if p in bench_history:
                             bench_history[p] += 1
 
-                total_benches_before = sum(bench_history.values())
+                all_have_sat_once = all(count >= 1 for count in bench_history.values())
 
-                # Allow second benches in the inning where the first round completes
-                all_have_sat_once = (total_benches_before + required_bench >= len(team_players))
-
-                # Eligible players for bench this inning
                 eligible_bench = []
                 for p in team_players:
                     was_benched_last = (inning_num > 1 and p in st.session_state.get(f"bench_{inning_num-1}", []))
@@ -307,7 +303,7 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP ======================
+# ====================== CREATE LINEUP (3 Auto-Fill Options) ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
@@ -315,33 +311,61 @@ if page == "Create Lineup":
     available_today = st.session_state.get('available_today', roster['name'].tolist())
     
     st.subheader("Step 2: Batting Order")
-    if st.button("Auto-Fill Batting Order - Value Strategy"):
-        if season_stats.empty:
-            st.error("Import GameChanger stats first!")
-        else:
-            stats_map = {row['name']: {'H': float(row.get('H',0) or 0), 'OBP': float(row.get('OBP',0) or 0), 'OPS': float(row.get('OPS',0) or 0), 'SLG': float(row.get('SLG',0) or 0)} for _, row in season_stats.iterrows()}
-            remaining = available_today[:]
-            order = []
-            candidates = [p for p in remaining if stats_map.get(p, {}).get('H', 0) >= 1]
-            if candidates:
-                candidates.sort(key=lambda p: stats_map.get(p, {}).get('OBP', 0), reverse=True)
-                order.append(candidates[0])
-                remaining.remove(candidates[0])
-            for _ in range(3):
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("Auto-Fill Batting Order - Value Strategy"):
+            if season_stats.empty:
+                st.error("Import GameChanger stats first!")
+            else:
+                stats_map = {row['name']: {'H': float(row.get('H',0) or 0), 'OBP': float(row.get('OBP',0) or 0), 'OPS': float(row.get('OPS',0) or 0), 'SLG': float(row.get('SLG',0) or 0)} for _, row in season_stats.iterrows()}
+                remaining = available_today[:]
+                order = []
+                candidates = [p for p in remaining if stats_map.get(p, {}).get('H', 0) >= 1]
+                if candidates:
+                    candidates.sort(key=lambda p: stats_map.get(p, {}).get('OBP', 0), reverse=True)
+                    order.append(candidates[0])
+                    remaining.remove(candidates[0])
+                for _ in range(3):
+                    if remaining:
+                        remaining.sort(key=lambda p: stats_map.get(p, {}).get('OPS', 0), reverse=True)
+                        order.append(remaining[0])
+                        remaining.pop(0)
                 if remaining:
+                    remaining.sort(key=lambda p: stats_map.get(p, {}).get('SLG', 0), reverse=True)
+                    order.append(remaining[0])
+                    remaining.pop(0)
+                while remaining:
                     remaining.sort(key=lambda p: stats_map.get(p, {}).get('OPS', 0), reverse=True)
                     order.append(remaining[0])
                     remaining.pop(0)
-            if remaining:
-                remaining.sort(key=lambda p: stats_map.get(p, {}).get('SLG', 0), reverse=True)
-                order.append(remaining[0])
-                remaining.pop(0)
-            while remaining:
-                remaining.sort(key=lambda p: stats_map.get(p, {}).get('OPS', 0), reverse=True)
-                order.append(remaining[0])
-                remaining.pop(0)
-            st.session_state.batting_order = order
-            st.success("✅ Auto-filled!")
+                st.session_state.batting_order = order
+                st.success("✅ Auto-filled with Value Strategy!")
+
+    with col2:
+        if st.button("Auto-Fill Batting Order - OPS"):
+            if season_stats.empty:
+                st.error("Import GameChanger stats first!")
+            else:
+                order = sorted(available_today, 
+                               key=lambda p: float(season_stats[season_stats['name'] == p]['OPS'].iloc[0]) 
+                               if not season_stats[season_stats['name'] == p].empty else 0, 
+                               reverse=True)
+                st.session_state.batting_order = order
+                st.success("✅ Auto-filled by OPS (highest to lowest)!")
+
+    with col3:
+        if st.button("Auto-Fill Batting Order - BA"):
+            if season_stats.empty:
+                st.error("Import GameChanger stats first!")
+            else:
+                order = sorted(available_today, 
+                               key=lambda p: float(season_stats[season_stats['name'] == p]['AVG'].iloc[0]) 
+                               if not season_stats[season_stats['name'] == p].empty else 0, 
+                               reverse=True)
+                st.session_state.batting_order = order
+                st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
     
     batting_order = st.session_state.get('batting_order', available_today)
     batting_df = pd.DataFrame({"Batting Spot": range(1, len(batting_order) + 1), "Player": batting_order})
@@ -556,4 +580,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Live Bench Filtering + Forced Bench Count • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • 3 Auto-Fill Options • Strict Rules • Orioles ⚾")
