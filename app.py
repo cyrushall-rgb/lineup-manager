@@ -125,10 +125,10 @@ if page == "Available Players Today":
 
     st.info("Tip: Save after making changes so other pages update automatically.")
 
-# ====================== DEFENSE ROTATION PLANNER ======================
+# ====================== DEFENSE ROTATION PLANNER (Live Connected Bench Dropdown) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Bench is single player • Strict bench rule • Orioles ⚾")
+    st.caption("Fully manual • Bench is single dropdown • Strict live bench rule • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -163,10 +163,24 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
+                # Calculate current bench counts from previous tabs
+                bench_history = {p: 0 for p in team_players}
+                for prev_inning in range(1, inning_num):
+                    prev_bench = st.session_state.get(f"bench_{prev_inning}", "— No bench —")
+                    if prev_bench != "— No bench —":
+                        bench_history[prev_bench] += 1
+
+                all_have_sat_once = all(count >= 1 for count in bench_history.values())
+
+                # Eligible for bench in this inning
+                eligible_bench = []
+                for p in team_players:
+                    if bench_history[p] == 0 or all_have_sat_once:
+                        eligible_bench.append(p)
+
                 st.subheader("Bench")
                 bench_player = st.selectbox("Select player to bench", 
-                                            ["— No bench —"] + team_players, 
-                                            index=0 if st.session_state.get(f"bench_{inning_num}") == "— No bench —" else None,
+                                            ["— No bench —"] + eligible_bench, 
                                             key=f"bench_{inning_num}")
 
                 # Available players after removing bench
@@ -201,7 +215,6 @@ if page == "Defense Rotation Planner":
                     for p in bench:
                         bench_history[p].append(inning_num)
 
-                    # Strict bench rules
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
                             st.error(f"❌ {p} cannot be benched in two consecutive innings")
@@ -233,7 +246,6 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                # Same validation as Save button (identical logic)
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
@@ -355,7 +367,6 @@ if page == "Create Lineup":
         if not position_fills:
             st.warning("⚠️ No rotation data found.")
 
-        # Tight printable card (same as before)
         batting_html = """
         <h2>Batting Order</h2>
         <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
@@ -532,4 +543,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Single Bench Dropdown + Preferred Position Enforcement • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Live Connected Bench Dropdown • Orioles ⚾")
