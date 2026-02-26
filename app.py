@@ -49,7 +49,6 @@ def load_data():
 
 roster, games, season_stats = load_data()
 
-# Persistent available players
 if os.path.exists(AVAILABLE_FILE):
     try:
         with open(AVAILABLE_FILE, "r") as f:
@@ -107,7 +106,7 @@ if page == "Roster & Stats":
 # ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
-    st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
+    st.caption("Check which players are available for today's game.")
 
     all_players = sorted(roster['name'].tolist()) if not roster.empty else []
 
@@ -177,7 +176,6 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # Live bench eligibility
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -315,7 +313,7 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP (Fixed Dropdowns + Clear Button) ======================
+# ====================== CREATE LINEUP (Fixed Dropdowns + Working Clear Button) ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
@@ -324,7 +322,6 @@ if page == "Create Lineup":
     
     st.subheader("Step 2: Manual Batting Order")
     
-    # Auto-Fill buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Auto-Fill Batting Order - Value Strategy"):
@@ -379,18 +376,20 @@ if page == "Create Lineup":
                 st.session_state.batting_order = order
                 st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
 
-    # ====================== FIXED SPOT DROPDOWN LINEUP ======================
+    # ====================== FIXED DROPDOWN LINEUP ======================
     n = len(available_today)
     if 'batting_order' not in st.session_state or len(st.session_state.batting_order) != n:
         st.session_state.batting_order = [""] * n
 
     new_order = st.session_state.batting_order.copy()
 
+    # Calculate currently used players
+    used = [p for p in new_order if p != ""]
+
     for i in range(n):
         spot = i + 1
         current = new_order[i]
-        used = [p for p in new_order if p != "" and p != current]
-        options = [""] + [p for p in available_today if p not in used]
+        options = [""] + [p for p in available_today if p not in used or p == current]
         
         selected = st.selectbox(
             f"Batting Spot {spot}",
@@ -402,7 +401,6 @@ if page == "Create Lineup":
 
     st.session_state.batting_order = new_order
 
-    # Show current lineup
     if any(new_order):
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -410,7 +408,7 @@ if page == "Create Lineup":
     # ====================== CLEAR BUTTON ======================
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
-        st.success("✅ Lineup cleared!")
+        st.rerun()   # ← This forces immediate refresh
 
     if st.button("📥 Download Batting Order CSV"):
         csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
@@ -621,4 +619,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Clear Lineup Button • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Fixed Spot Dropdowns + Clear Button • Orioles ⚾")
