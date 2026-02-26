@@ -165,10 +165,10 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # === LIVE BENCH ELIGIBILITY CALCULATION ===
+                # === LIVE BENCH HISTORY FROM ALL PREVIOUS TABS ===
                 bench_history = {p: 0 for p in team_players}
-                for prev in range(1, inning_num):
-                    prev_bench = st.session_state.get(f"bench_{prev}", [])
+                for prev_inning in range(1, inning_num):
+                    prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
                     for p in prev_bench:
                         if p in bench_history:
                             bench_history[p] += 1
@@ -204,7 +204,6 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        # Save and Validate (with forced bench count + rules)
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
@@ -554,4 +553,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Live Bench Filtering + Forced Bench Count • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Live Bench Filtering • Forced Bench Count • Orioles ⚾")
