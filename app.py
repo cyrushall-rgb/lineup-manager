@@ -4,13 +4,6 @@ import os
 import json
 import base64
 from datetime import datetime
-import plotly.express as px
-
-try:
-    from weasyprint import HTML as WeasyHTML
-    weasyprint_available = True
-except ImportError:
-    weasyprint_available = False
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -186,6 +179,7 @@ if page == "Create Lineup":
         if not position_fills:
             st.warning("⚠️ No rotation data found. Go to Defense Rotation Planner, assign positions, then click 'Save Current Rotation' or 'Validate'.")
 
+        # Batting Order table
         batting_html = """
         <h2>Batting Order</h2>
         <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
