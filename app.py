@@ -165,7 +165,7 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # === LIVE BENCH HISTORY FROM ALL PREVIOUS TABS ===
+                # === LIVE BENCH HISTORY FROM PREVIOUS INNINGS ===
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -173,7 +173,10 @@ if page == "Defense Rotation Planner":
                         if p in bench_history:
                             bench_history[p] += 1
 
-                all_have_sat_once = all(count >= 1 for count in bench_history.values())
+                total_benches_before = sum(bench_history.values())
+
+                # Allow second benches in the inning where the first round completes
+                all_have_sat_once = (total_benches_before + required_bench >= len(team_players))
 
                 # Eligible players for bench this inning
                 eligible_bench = []
@@ -553,4 +556,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Live Bench Filtering • Forced Bench Count • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Live Bench Filtering + Forced Bench Count • Orioles ⚾")
