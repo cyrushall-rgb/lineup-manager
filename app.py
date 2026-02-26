@@ -148,7 +148,7 @@ if page == "Create Lineup":
         csv = edited_batting.to_csv(index=False)
         st.download_button("Download for GameChanger", csv, f"batting_order_{game_date}.csv", "text/csv")
 
-    # ====================== PRINTABLE GAME DAY CARD ======================
+    # ====================== PRINTABLE GAME DAY CARD (TIGHTER SPACING) ======================
     if st.button("🖨️ Printable Game Day Card"):
         position_fills = {}
 
@@ -219,9 +219,9 @@ if page == "Create Lineup":
         batting_html += "</table>"
 
         season_html = """
-        <br><br><br><br><br><br><br><br><br>
+        <br><br><br>
         <h2>Season Stats</h2>
-        <table border="1" cellpadding="6" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:7px;">
+        <table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:6.8px;">
         <tr>
             <th>Player</th>
             <th>OBP</th>
@@ -265,12 +265,13 @@ if page == "Create Lineup":
         full_html = f"""
         <html><head><title>Lineup Card - {game_date}</title>
         <style>
-            body {{font-family: Arial, sans-serif; margin: 30px; color: #000; background: white;}}
-            h1 {{text-align: center; color: #fc4c02; font-size: 32px; margin-bottom: 10px;}}
-            h2 {{color: #000; border-bottom: 3px solid #fc4c02; padding-bottom: 8px;}}
-            table {{width: 100%; border-collapse: collapse; margin: 20px 0;}}
-            th, td {{border: 1px solid #333; padding: 10px; text-align: left;}}
+            body {{font-family: Arial, sans-serif; margin: 25px; color: #000; background: white;}}
+            h1 {{text-align: center; color: #fc4c02; font-size: 32px; margin-bottom: 8px;}}
+            h2 {{color: #000; border-bottom: 3px solid #fc4c02; padding-bottom: 6px; font-size: 18px;}}
+            table {{width: 100%; border-collapse: collapse; margin: 15px 0;}}
+            th, td {{border: 1px solid #333; padding: 8px; text-align: left;}}
             th {{background: #fc4c02; color: white;}}
+            @page {{ margin: 15mm; }}
         </style></head><body>
         <h1>Lineup Card</h1>
         <p style="text-align:center; font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
@@ -279,7 +280,7 @@ if page == "Create Lineup":
         {batting_html}
         </div>
         
-        <div style="margin-top:80px;">
+        <div style="margin-top:25px;">
         {season_html}
         </div>
         </body></html>
@@ -487,4 +488,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • One-Page Card • Orioles ⚾")
