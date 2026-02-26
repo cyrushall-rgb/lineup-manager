@@ -104,31 +104,44 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
-# ====================== AVAILABLE PLAYERS TODAY ======================
+# ====================== AVAILABLE PLAYERS TODAY (New Checkbox Table) ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
-    st.caption("Select who is available for today's game. This controls Defense Rotation Planner and Create Lineup.")
+    st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
 
-    all_players = roster['name'].tolist() if not roster.empty else []
-    
-    available_today = st.multiselect(
-        "Who is Available Today?", 
-        all_players, 
-        default=st.session_state.get('available_today', all_players)
+    all_players = sorted(roster['name'].tolist()) if not roster.empty else []
+
+    # Initialize or update the dataframe for editing
+    if 'available_df' not in st.session_state or len(st.session_state.available_df) != len(all_players):
+        current_available = st.session_state.get('available_today', all_players)
+        df = pd.DataFrame({
+            "Player": all_players,
+            "Available Today": [player in current_available for player in all_players]
+        })
+        st.session_state.available_df = df
+
+    edited_df = st.data_editor(
+        st.session_state.available_df,
+        column_config={
+            "Player": st.column_config.TextColumn("Player", disabled=True),
+            "Available Today": st.column_config.CheckboxColumn("Available Today", default=False)
+        },
+        hide_index=True,
+        use_container_width=True
     )
-    
-    if st.button("💾 Save Available Players"):
-        st.session_state.available_today = available_today
-        with open(AVAILABLE_FILE, "w") as f:
-            json.dump(available_today, f)
-        st.success("✅ Available players saved!")
 
-    st.info("Tip: Save after making changes so other pages update automatically.")
+    if st.button("💾 Save Available Players"):
+        selected = edited_df[edited_df["Available Today"] == True]["Player"].tolist()
+        st.session_state.available_today = selected
+        with open(AVAILABLE_FILE, "w") as f:
+            json.dump(selected, f)
+        st.session_state.available_df = edited_df  # save the edited state
+        st.success("✅ Available players saved! This now affects Defense Rotation Planner and Create Lineup.")
 
 # ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Bench is single dropdown • Strict rules optional • Orioles ⚾")
+    st.caption("Fully manual • Bench dropdown only shows eligible players • Strict rules enforced • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -142,8 +155,6 @@ if page == "Defense Rotation Planner":
 
     if pool_needed > 0:
         st.info(f"✅ Using {pool_needed} Pool Player(s)")
-
-    force_bench_rule = st.toggle("Force League Bench Rule (no back-to-back + fair rotation)", value=True)
 
     if len(team_players) < 8:
         st.error("Minimum 8 team players required")
@@ -167,7 +178,7 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # === LIVE BENCH ELIGIBILITY ===
+                # Live bench eligibility
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -177,16 +188,11 @@ if page == "Defense Rotation Planner":
 
                 all_have_sat_once = all(count >= 1 for count in bench_history.values())
 
-                if force_bench_rule:
-                    # Strict rule
-                    eligible_bench = []
-                    for p in team_players:
-                        was_benched_last = (inning_num > 1 and p in st.session_state.get(f"bench_{inning_num-1}", []))
-                        if not was_benched_last and (bench_history[p] == 0 or all_have_sat_once):
-                            eligible_bench.append(p)
-                else:
-                    # Rule disabled — allow any player (except those already benched this inning, which is automatic)
-                    eligible_bench = team_players
+                eligible_bench = []
+                for p in team_players:
+                    was_benched_last = (inning_num > 1 and p in st.session_state.get(f"bench_{inning_num-1}", []))
+                    if not was_benched_last and (bench_history[p] == 0 or all_have_sat_once):
+                        eligible_bench.append(p)
 
                 st.subheader(f"Bench (select exactly {required_bench} players)")
                 bench = st.multiselect("Select players to bench", 
@@ -210,17 +216,105 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        # Save and Validate (unchanged)
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
-                # ... (same as previous version)
-                st.success("✅ Current rotation saved!")
+                full_plan_rows = []
+                valid = True
+                bench_history = {p: [] for p in team_players}
+
+                for idx in range(num_innings):
+                    inning_num = idx + 1
+                    bench = st.session_state.get(f"bench_{inning_num}", [])
+
+                    if len(bench) != required_bench:
+                        st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
+                        valid = False
+
+                    for p in bench:
+                        bench_history[p].append(inning_num)
+
+                    for p in bench:
+                        if idx > 0 and (inning_num - 1) in bench_history[p]:
+                            st.error(f"❌ {p} cannot be benched in two consecutive innings")
+                            valid = False
+                    if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
+                        st.error("❌ No player can be benched a second time until every player has been benched at least once")
+                        valid = False
+
+                    p = st.session_state.get(f"pitcher_{inning_num}", "")
+                    c = st.session_state.get(f"catcher_{inning_num}", "")
+                    assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
+                    if len(set(assigned)) != 9 or "" in assigned:
+                        st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
+                        valid = False
+
+                    row = {
+                        "Inning": inning_num,
+                        "Bench": ", ".join(bench) if bench else "— No bench —",
+                        "P": p,
+                        "C": c,
+                        **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
+                    }
+                    full_plan_rows.append(row)
+
+                if valid:
+                    with open(ROTATION_FILE, "w") as f:
+                        json.dump(full_plan_rows, f)
+                    st.success("✅ Current rotation saved!")
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                # ... (same as previous version)
-                st.success("✅ All innings validated!")
+                valid = True
+                full_plan_rows = []
+                bench_history = {p: [] for p in team_players}
+
+                for idx in range(num_innings):
+                    inning_num = idx + 1
+                    bench = st.session_state.get(f"bench_{inning_num}", [])
+
+                    if len(bench) != required_bench:
+                        st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
+                        valid = False
+
+                    for p in bench:
+                        bench_history[p].append(inning_num)
+
+                    for p in bench:
+                        if idx > 0 and (inning_num - 1) in bench_history[p]:
+                            st.error(f"❌ {p} cannot be benched in two consecutive innings")
+                            valid = False
+                    if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
+                        st.error("❌ No player can be benched a second time until everyone has sat once")
+                        valid = False
+
+                    p = st.session_state.get(f"pitcher_{inning_num}", "")
+                    c = st.session_state.get(f"catcher_{inning_num}", "")
+                    assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
+                    if len(set(assigned)) != 9 or "" in assigned:
+                        st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
+                        valid = False
+
+                    row = {
+                        "Inning": inning_num,
+                        "Bench": ", ".join(bench) if bench else "— No bench —",
+                        "P": p,
+                        "C": c,
+                        **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
+                    }
+                    full_plan_rows.append(row)
+
+                if valid:
+                    st.session_state.full_plan_rows = full_plan_rows
+                    with open(ROTATION_FILE, "w") as f:
+                        json.dump(full_plan_rows, f)
+                    full_df = pd.DataFrame(full_plan_rows)
+                    st.dataframe(full_df, use_container_width=True)
+                    st.download_button("📥 Download COMPLETE Plan CSV",
+                                     full_df.to_csv(index=False),
+                                     f"rotation_{num_innings}innings.csv",
+                                     "text/csv")
+                    st.success("✅ All innings validated!")
 
 # ====================== CREATE LINEUP ======================
 if page == "Create Lineup":
@@ -295,7 +389,147 @@ if page == "Create Lineup":
         st.download_button("Download for GameChanger", csv, f"batting_order_{game_date}.csv", "text/csv")
 
     if st.button("🖨️ Printable Game Day Card"):
-        # (tight printable card code unchanged)
+        position_fills = {}
+        if os.path.exists(ROTATION_FILE):
+            try:
+                with open(ROTATION_FILE, "r") as f:
+                    saved = json.load(f)
+                for row in saved:
+                    inning = row["Inning"] - 1
+                    for key, value in row.items():
+                        if key not in ["Inning", "Bench"] and value and value not in ["— No bench —"]:
+                            player = value
+                            pos = key
+                            if player not in position_fills:
+                                position_fills[player] = [""] * 6
+                            if inning < 6:
+                                position_fills[player][inning] = pos
+                        elif key == "Bench" and value and value not in ["— No bench —"]:
+                            bench_players = [p.strip() for p in str(value).split(',') if p.strip()]
+                            for player in bench_players:
+                                if player not in position_fills:
+                                    position_fills[player] = [""] * 6
+                                if inning < 6:
+                                    position_fills[player][inning] = "BN"
+            except:
+                pass
+
+        if not position_fills:
+            st.warning("⚠️ No rotation data found.")
+
+        batting_html = """
+        <h2>Batting Order</h2>
+        <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
+        <tr>
+            <th style="width:6%; text-align:center;">#</th>
+            <th style="width:6%; text-align:center;">#</th>
+            <th style="width:28%;">Player</th>
+            <th style="width:8%; text-align:center;">1</th>
+            <th style="width:8%; text-align:center;">2</th>
+            <th style="width:8%; text-align:center;">3</th>
+            <th style="width:8%; text-align:center;">4</th>
+            <th style="width:8%; text-align:center;">5</th>
+            <th style="width:8%; text-align:center;">6</th>
+        </tr>
+        """
+        for i, player in enumerate(edited_batting["Player"]):
+            jersey = roster.loc[roster['name'] == player, 'jersey'].iloc[0] if not roster[roster['name'] == player].empty else "—"
+            jersey = str(jersey) if pd.notna(jersey) else "—"
+            pos1 = position_fills.get(player, [""]*6)[0]
+            pos2 = position_fills.get(player, [""]*6)[1]
+            pos3 = position_fills.get(player, [""]*6)[2]
+            pos4 = position_fills.get(player, [""]*6)[3]
+            pos5 = position_fills.get(player, [""]*6)[4]
+            pos6 = position_fills.get(player, [""]*6)[5]
+            batting_html += f"""
+            <tr>
+                <td style="text-align:center; font-weight:bold;">{i+1}</td>
+                <td style="text-align:center;">{jersey}</td>
+                <td>{player}</td>
+                <td style="text-align:center;">{pos1}</td>
+                <td style="text-align:center;">{pos2}</td>
+                <td style="text-align:center;">{pos3}</td>
+                <td style="text-align:center;">{pos4}</td>
+                <td style="text-align:center;">{pos5}</td>
+                <td style="text-align:center;">{pos6}</td>
+            </tr>
+            """
+        batting_html += "</table>"
+
+        season_html = """
+        <br><br><br>
+        <h2>Season Stats</h2>
+        <table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:6.8px;">
+        <tr>
+            <th>Player</th>
+            <th>OBP</th>
+            <th>OPS</th>
+            <th>BABIP</th>
+            <th>C</th>
+            <th>1B</th>
+            <th>2B</th>
+            <th>3B</th>
+            <th>SS</th>
+            <th>LF</th>
+            <th>CF</th>
+            <th>RF</th>
+            <th>IP</th>
+            <th>FIP</th>
+        </tr>
+        """
+        for _, row in roster.iterrows():
+            name = row['name']
+            stat_row = season_stats[season_stats['name'] == name] if not season_stats.empty and 'name' in season_stats.columns else pd.DataFrame()
+            obp = round(stat_row['OBP'].iloc[0], 3) if not stat_row.empty and 'OBP' in stat_row.columns else "—"
+            ops = round(stat_row['OPS'].iloc[0], 3) if not stat_row.empty and 'OPS' in stat_row.columns else "—"
+            babip = "—"
+            c_inn = "—"
+            ip = round(stat_row['IP'].iloc[0], 1) if not stat_row.empty and 'IP' in stat_row.columns else "—"
+            fip = "—"
+            season_html += f"""
+            <tr>
+                <td>{name}</td>
+                <td>{obp}</td>
+                <td>{ops}</td>
+                <td>{babip}</td>
+                <td>{c_inn}</td>
+                <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                <td>{ip}</td>
+                <td>{fip}</td>
+            </tr>
+            """
+        season_html += "</table>"
+
+        full_html = f"""
+        <html><head><title>Lineup Card - {game_date}</title>
+        <style>
+            body {{font-family: Arial, sans-serif; margin: 25px; color: #000; background: white;}}
+            h1 {{text-align: center; color: #fc4c02; font-size: 32px; margin-bottom: 8px;}}
+            h2 {{color: #000; border-bottom: 3px solid #fc4c02; padding-bottom: 6px; font-size: 18px;}}
+            table {{width: 100%; border-collapse: collapse; margin: 15px 0;}}
+            th, td {{border: 1px solid #333; padding: 8px; text-align: left;}}
+            th {{background: #fc4c02; color: white;}}
+            @page {{ margin: 15mm; }}
+        </style></head><body>
+        <h1>Lineup Card</h1>
+        <p style="text-align:center; font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
+        
+        <div>
+        {batting_html}
+        </div>
+        
+        <div style="margin-top:25px;">
+        {season_html}
+        </div>
+        </body></html>
+        """
+
+        st.download_button(
+            "📥 Download HTML (open & print)",
+            full_html,
+            f"lineup_card_{game_date}.html",
+            "text/html"
+        )
         st.success("✅ Printable Lineup Card ready!")
 
 # ====================== LOG GAME, PITCHER WORKLOAD, REPORTS ======================
@@ -359,4 +593,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.1 • Lineup Manager • Toggleable Bench Rule • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Checkbox Available Players • Orioles ⚾")
