@@ -103,10 +103,10 @@ if page == "Roster & Stats":
             st.success("✅ GC stats merged!")
             st.dataframe(season_stats)
 
-# ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Bench Rule) ======================
+# ====================== DEFENSE ROTATION PLANNER (Fully Manual + Strict Rules) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Strict bench rule enforced (no back-to-back, no second bench until everyone has sat once) • Orioles ⚾")
+    st.caption("Fully manual • One player = one role per inning • Strict bench rule enforced • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -122,7 +122,6 @@ if page == "Defense Rotation Planner":
     if len(team_players) < 8:
         st.error("Minimum 8 team players required")
     else:
-        # Initialize empty bench selections when innings change
         if 'num_innings' not in st.session_state or st.session_state.num_innings != num_innings:
             st.session_state.num_innings = num_innings
             for i in range(1, num_innings + 1):
@@ -136,11 +135,11 @@ if page == "Defense Rotation Planner":
             inning_num = idx + 1
             with tab:
                 if pool_needed > 0:
-                    on_field = team_players + ["Pool Player"] * pool_needed
+                    base_on_field = team_players + ["Pool Player"] * pool_needed
                 else:
-                    on_field = team_players
+                    base_on_field = team_players
 
-                st.write(f"**On field:** {', '.join(on_field)}")
+                st.write(f"**Available players:** {', '.join(base_on_field)}")
 
                 st.subheader("Bench this inning")
                 bench = st.multiselect("Select players to bench", 
@@ -148,21 +147,23 @@ if page == "Defense Rotation Planner":
                                        default=st.session_state.get(f"bench_{inning_num}", []), 
                                        key=f"bench_{inning_num}")
 
-                st.subheader("Pitcher & Catcher (select first)")
-                pitcher_options = [p for p in on_field if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
-                pitcher = st.selectbox("Pitcher", pitcher_options or on_field, key=f"pitcher_{inning_num}")
+                # Available after removing bench players
+                available = [p for p in base_on_field if p not in bench]
 
-                catcher_options = [p for p in on_field if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                st.subheader("Pitcher & Catcher")
+                pitcher = st.selectbox("Pitcher", available or base_on_field, key=f"pitcher_{inning_num}")
+
+                catcher_options = [p for p in available if p != pitcher]
                 catcher = st.selectbox("Catcher", catcher_options, key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in on_field if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
+                    pos_options = [p for p in available if p not in assigned]
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        # Save and Validate with strict bench rule
+        # Save and Validate with strict cross-inning bench rule
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
@@ -176,10 +177,10 @@ if page == "Defense Rotation Planner":
                     for p in bench:
                         bench_history[p].append(inning_num)
 
-                    # Strict rules
+                    # Strict bench rules
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
-                            st.error(f"❌ {p} cannot be benched in two consecutive innings (Inning {inning_num})")
+                            st.error(f"❌ {p} cannot be benched in two consecutive innings")
                             valid = False
                     if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
                         st.error("❌ No player can be benched a second time until every player has been benched at least once")
@@ -336,7 +337,6 @@ if page == "Create Lineup":
         if not position_fills:
             st.warning("⚠️ No rotation data found.")
 
-        # Tight printable card
         batting_html = """
         <h2>Batting Order</h2>
         <table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px; margin-left:0;">
@@ -513,4 +513,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Fully Manual Defense + Strict Bench Rule • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Fully Manual + Strict Rules • Orioles ⚾")
