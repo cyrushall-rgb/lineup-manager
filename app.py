@@ -39,6 +39,7 @@ def load_data():
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
+        roster['jersey'] = roster['jersey'].fillna("")  # Replace NaN with empty string
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -84,96 +85,50 @@ def can_play(positions, position):
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Edit player details. Click to expand each player.")
+    st.caption("Edit player details. Check 'Delete' to remove a player.")
 
     # Sort roster alphabetically by name
     roster = roster.sort_values(by="name").reset_index(drop=True)
 
-    # Display each player in an expander
-    edited_roster = roster.copy()
-    to_delete = []
+    # Add temporary "Delete" column
+    roster['Delete'] = False
 
-    for idx, row in roster.iterrows():
-        with st.expander(f"{row['name']} #{row['jersey']}"):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                new_name = st.text_input("Player", value=row['name'], key=f"name_{idx}")
-            with col2:
-                new_jersey = st.text_input("Number", value=row['jersey'], key=f"jersey_{idx}")
-            with col3:
-                new_b_t = st.text_input("B/T", value=row['b_t'], key=f"b_t_{idx}")
-            with col4:
-                new_age = st.text_input("Age", value=row['age'], key=f"age_{idx}")
+    # Display as table for editing
+    edited = st.data_editor(
+        roster,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "name": "Player",
+            "jersey": "Number",
+            "b_t": "B/T",
+            "age": "Age",
+            "positions": "Positions",
+            "Delete": st.column_config.CheckboxColumn("Delete", help="Check to delete this player")
+        }
+    )
 
-            st.subheader("Positions")
-            positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
-            current_positions = str(row['positions']).split(',') if pd.notna(row['positions']) else []
-            new_positions = []
-            cols = st.columns(len(positions_list))
-            for j, pos in enumerate(positions_list):
-                with cols[j]:
-                    if st.checkbox(pos, value=pos.upper() in [p.strip().upper() for p in current_positions], key=f"pos_{idx}_{pos}"):
-                        new_positions.append(pos)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Add New Player"):
+            new_row = {"name": "New Player", "jersey": "", "b_t": "", "age": "", "positions": "", "Delete": False}
+            edited = pd.concat([edited, pd.DataFrame([new_row])], ignore_index=True)
+            st.rerun()  # Refresh to show the new row
 
-            # Update edited roster
-            edited_roster.at[idx, 'name'] = new_name
-            edited_roster.at[idx, 'jersey'] = new_jersey
-            edited_roster.at[idx, 'b_t'] = new_b_t
-            edited_roster.at[idx, 'age'] = new_age
-            edited_roster.at[idx, 'positions'] = ', '.join(new_positions)
-
-            # Delete checkbox
-            if st.checkbox("Delete this player", key=f"delete_{idx}"):
-                to_delete.append(idx)
-
-    # Add new player
-    with st.expander("Add New Player"):
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            add_name = st.text_input("Player")
-        with col2:
-            add_jersey = st.text_input("Number")
-        with col3:
-            add_b_t = st.text_input("B/T")
-        with col4:
-            add_age = st.text_input("Age")
-
-        st.subheader("Positions")
-        positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
-        add_positions = []
-        cols = st.columns(len(positions_list))
-        for j, pos in enumerate(positions_list):
-            with cols[j]:
-                if st.checkbox(pos, key=f"add_pos_{pos}"):
-                    add_positions.append(pos)
-
-        if st.button("Add Player"):
-            if add_name:
-                new_row = {
-                    "name": add_name,
-                    "jersey": add_jersey,
-                    "b_t": add_b_t,
-                    "age": add_age,
-                    "positions": ', '.join(add_positions)
-                }
-                edited_roster = pd.concat([edited_roster, pd.DataFrame([new_row])], ignore_index=True)
-                st.success("Player added!")
-            else:
-                st.error("Player name is required.")
-
-    # Save button
-    if st.button("💾 Save Roster"):
-        # Handle deletes
-        if to_delete:
-            delete_names = [edited_roster.at[i, 'name'] for i in to_delete]
-            st.warning(f"You are about to delete {len(to_delete)} player(s): {', '.join(delete_names)}")
-            if st.button("Confirm Delete"):
-                edited_roster = edited_roster.drop(to_delete)
-                st.success("Players deleted!")
-
-        edited_roster.to_excel(ROSTER_FILE, index=False)
-        st.success("Roster saved!")
-        st.rerun()
+    with col2:
+        if st.button("💾 Save Roster"):
+            # Handle deletes
+            to_delete = edited[edited['Delete'] == True]
+            if not to_delete.empty:
+                delete_names = to_delete['name'].tolist()
+                st.warning(f"You are about to delete {len(delete_names)} player(s): {', '.join(delete_names)}")
+                if st.button("Confirm Delete"):
+                    edited = edited[edited['Delete'] == False]
+                    st.success("Players deleted!")
+            edited = edited.drop(columns=["Delete"])
+            edited.to_excel(ROSTER_FILE, index=False)
+            st.success("Roster saved!")
+            st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -287,16 +242,16 @@ if page == "Defense Rotation Planner":
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
-                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
+                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
                 pitcher = st.selectbox("Pitcher", pitcher_options or ["No eligible players"], key=f"pitcher_{inning_num}")
 
-                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
                 catcher = st.selectbox("Catcher", catcher_options or ["No eligible players"], key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
+                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
