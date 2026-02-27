@@ -113,6 +113,7 @@ if page == "Roster & Stats":
         if st.button("Add New Player"):
             new_row = {"name": "New Player", "jersey": "", "b_t": "", "age": "", "positions": "", "Delete": False}
             edited = pd.concat([edited, pd.DataFrame([new_row])], ignore_index=True)
+            st.session_state.edited_roster = edited  # Temporarily store to refresh
             st.rerun()  # Refresh to show the new row
 
     with col2:
@@ -242,16 +243,16 @@ if page == "Defense Rotation Planner":
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
-                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
+                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
                 pitcher = st.selectbox("Pitcher", pitcher_options or ["No eligible players"], key=f"pitcher_{inning_num}")
 
-                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
                 catcher = st.selectbox("Catcher", catcher_options or ["No eligible players"], key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
+                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
