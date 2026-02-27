@@ -104,45 +104,62 @@ if page == "Roster & Stats":
                 new_b_t = st.text_input("B/T", value=row['b_t'], key=f"b_t_{idx}")
             with col4:
                 new_age = st.text_input("Age", value=row['age'], key=f"age_{idx}")
-            new_positions = st.text_input("Positions", value=row['positions'], key=f"positions_{idx}")
+
+            st.subheader("Positions")
+            positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
+            current_positions = str(row['positions']).split(',') if pd.notna(row['positions']) else []
+            new_positions = []
+            cols = st.columns(len(positions_list))
+            for j, pos in enumerate(positions_list):
+                with cols[j]:
+                    if st.checkbox(pos, value=pos.upper() in [p.strip().upper() for p in current_positions], key=f"pos_{idx}_{pos}"):
+                        new_positions.append(pos)
 
             # Update edited roster
             edited_roster.at[idx, 'name'] = new_name
             edited_roster.at[idx, 'jersey'] = new_jersey
             edited_roster.at[idx, 'b_t'] = new_b_t
             edited_roster.at[idx, 'age'] = new_age
-            edited_roster.at[idx, 'positions'] = new_positions
+            edited_roster.at[idx, 'positions'] = ', '.join(new_positions)
 
             # Delete checkbox
             if st.checkbox("Delete this player", key=f"delete_{idx}"):
                 to_delete.append(idx)
 
     # Add new player
-    st.subheader("Add New Player")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        add_name = st.text_input("Player")
-    with col2:
-        add_jersey = st.text_input("Number")
-    with col3:
-        add_b_t = st.text_input("B/T")
-    with col4:
-        add_age = st.text_input("Age")
-    add_positions = st.text_input("Positions")
+    with st.expander("Add New Player"):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            add_name = st.text_input("Player")
+        with col2:
+            add_jersey = st.text_input("Number")
+        with col3:
+            add_b_t = st.text_input("B/T")
+        with col4:
+            add_age = st.text_input("Age")
 
-    if st.button("Add Player"):
-        if add_name:
-            new_row = {
-                "name": add_name,
-                "jersey": add_jersey,
-                "b_t": add_b_t,
-                "age": add_age,
-                "positions": add_positions
-            }
-            edited_roster = pd.concat([edited_roster, pd.DataFrame([new_row])], ignore_index=True)
-            st.success("Player added!")
-        else:
-            st.error("Player name is required.")
+        st.subheader("Positions")
+        positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
+        add_positions = []
+        cols = st.columns(len(positions_list))
+        for j, pos in enumerate(positions_list):
+            with cols[j]:
+                if st.checkbox(pos, key=f"add_pos_{pos}"):
+                    add_positions.append(pos)
+
+        if st.button("Add Player"):
+            if add_name:
+                new_row = {
+                    "name": add_name,
+                    "jersey": add_jersey,
+                    "b_t": add_b_t,
+                    "age": add_age,
+                    "positions": ', '.join(add_positions)
+                }
+                edited_roster = pd.concat([edited_roster, pd.DataFrame([new_row])], ignore_index=True)
+                st.success("Player added!")
+            else:
+                st.error("Player name is required.")
 
     # Save button
     if st.button("💾 Save Roster"):
