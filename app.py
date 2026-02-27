@@ -39,7 +39,7 @@ def load_data():
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
-        roster['jersey'] = roster['jersey'].fillna("")  # Replace NaN with empty string
+        roster['jersey'] = roster['jersey'].fillna("")  # No #nan
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -87,15 +87,16 @@ if page == "Roster & Stats":
     st.header("Roster")
     st.caption("Edit player details. Check 'Delete' to remove a player.")
 
-    # Sort roster alphabetically by name
-    roster = roster.sort_values(by="name").reset_index(drop=True)
+    # Load roster into session_state for stable editing
+    if 'roster_df' not in st.session_state:
+        st.session_state.roster_df = roster.copy()
 
-    # Add temporary "Delete" column
-    roster['Delete'] = False
+    # Add temporary Delete column
+    st.session_state.roster_df['Delete'] = False
 
-    # Display as table for editing
+    # Display as table
     edited = st.data_editor(
-        roster,
+        st.session_state.roster_df,
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -110,11 +111,17 @@ if page == "Roster & Stats":
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Add New Player"):
-            new_row = {"name": "New Player", "jersey": "", "b_t": "", "age": "", "positions": "", "Delete": False}
-            edited = pd.concat([edited, pd.DataFrame([new_row])], ignore_index=True)
-            st.session_state.edited_roster = edited  # Temporarily store to refresh
-            st.rerun()  # Refresh to show the new row
+        if st.button("➕ Add New Player"):
+            new_row = pd.DataFrame([{
+                "name": "New Player",
+                "jersey": "",
+                "b_t": "",
+                "age": "",
+                "positions": "",
+                "Delete": False
+            }])
+            st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
+            st.rerun()
 
     with col2:
         if st.button("💾 Save Roster"):
@@ -126,7 +133,9 @@ if page == "Roster & Stats":
                 if st.button("Confirm Delete"):
                     edited = edited[edited['Delete'] == False]
                     st.success("Players deleted!")
+
             edited = edited.drop(columns=["Delete"])
+            st.session_state.roster_df = edited
             edited.to_excel(ROSTER_FILE, index=False)
             st.success("Roster saved!")
             st.rerun()
@@ -218,7 +227,6 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
-                # Live bench eligibility
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -243,16 +251,16 @@ if page == "Defense Rotation Planner":
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
-                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
+                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
                 pitcher = st.selectbox("Pitcher", pitcher_options or ["No eligible players"], key=f"pitcher_{inning_num}")
 
-                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
                 catcher = st.selectbox("Catcher", catcher_options or ["No eligible players"], key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'preferred_pos'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
+                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
                     selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
@@ -449,7 +457,6 @@ if page == "Create Lineup":
     # ====================== CLEAR BUTTON ======================
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
-        # Delete widget states
         for i in range(n):
             key = f"batting_spot_{i}"
             if key in st.session_state:
