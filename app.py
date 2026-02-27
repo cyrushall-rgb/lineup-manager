@@ -39,7 +39,7 @@ def load_data():
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
-        roster['jersey'] = roster['jersey'].fillna("")
+        roster = roster.fillna("")  # No more "nan"
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -60,7 +60,7 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster_df in session_state (moved to top to fix dialog error)
+# Initialize roster in session_state
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -94,7 +94,20 @@ if page == "Roster & Stats":
     # Sort alphabetically
     st.session_state.roster_df = st.session_state.roster_df.sort_values(by="name").reset_index(drop=True)
 
-    # Display clean list
+    # Headers
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
+    with col1:
+        st.subheader("Player")
+    with col2:
+        st.subheader("Number")
+    with col3:
+        st.subheader("B/T")
+    with col4:
+        st.subheader("Age")
+    with col5:
+        st.subheader("Positions")
+
+    # Display list
     for idx, row in st.session_state.roster_df.iterrows():
         col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
         with col1:
@@ -106,7 +119,7 @@ if page == "Roster & Stats":
         with col3:
             st.write(row['b_t'])
         with col4:
-            st.write(row['age'])
+            st.write(str(row['age']).split('.')[0] if row['age'] != "" else "")  # No decimal
         with col5:
             st.write(row['positions'])
 
@@ -159,7 +172,7 @@ if page == "Roster & Stats":
         name = st.text_input("Player Name", value=row['name'])
         jersey = st.text_input("Jersey Number", value=row['jersey'])
         b_t = st.text_input("B/T", value=row['b_t'])
-        age = st.text_input("Age", value=row['age'])
+        age = st.text_input("Age", value=str(row['age']).split('.')[0] if row['age'] != "" else "")
         
         st.subheader("Positions")
         positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
