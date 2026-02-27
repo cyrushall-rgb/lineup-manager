@@ -29,10 +29,10 @@ st.markdown("""
 st.title("⚾ Lineup Manager - v1.0")
 
 def load_data():
-    cols = ["name", "jersey", "league_age", "preferred_pos"]
+    cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        for old in ["player_id", "dob", "Player ID", "Date of Birth"]:
+        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
             if old in roster.columns:
                 roster = roster.drop(columns=[old])
         for col in cols:
@@ -69,10 +69,10 @@ page = st.sidebar.selectbox("Menu", [
     "Reports"
 ])
 
-def can_play(preferred_pos, position):
-    if not preferred_pos or pd.isna(preferred_pos):
+def can_play(positions, position):
+    if not positions or pd.isna(positions):
         return False
-    prefs = [p.strip().upper() for p in str(preferred_pos).split(',')]
+    prefs = [p.strip().upper() for p in str(positions).split(',')]
     pos = position.upper()
     if pos in ["P", "PITCHER"] and any(x in prefs for x in ["P", "PITCHER"]): return True
     if pos in ["C", "CATCHER"] and any(x in prefs for x in ["C", "CATCHER"]): return True
@@ -84,11 +84,79 @@ def can_play(preferred_pos, position):
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Columns: Name, Jersey, League Age, Positions (P, C, 1B, INF, OF, etc.)")
-    edited = st.data_editor(roster, num_rows="dynamic", use_container_width=True)
+    st.caption("Edit player details. Click to expand each player.")
+
+    # Sort roster alphabetically by name
+    roster = roster.sort_values(by="name").reset_index(drop=True)
+
+    # Display each player in an expander
+    edited_roster = roster.copy()
+    to_delete = []
+
+    for idx, row in roster.iterrows():
+        with st.expander(f"{row['name']} #{row['jersey']}"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                new_name = st.text_input("Player", value=row['name'], key=f"name_{idx}")
+            with col2:
+                new_jersey = st.text_input("Number", value=row['jersey'], key=f"jersey_{idx}")
+            with col3:
+                new_b_t = st.text_input("B/T", value=row['b_t'], key=f"b_t_{idx}")
+            with col4:
+                new_age = st.text_input("Age", value=row['age'], key=f"age_{idx}")
+            new_positions = st.text_input("Positions", value=row['positions'], key=f"positions_{idx}")
+
+            # Update edited roster
+            edited_roster.at[idx, 'name'] = new_name
+            edited_roster.at[idx, 'jersey'] = new_jersey
+            edited_roster.at[idx, 'b_t'] = new_b_t
+            edited_roster.at[idx, 'age'] = new_age
+            edited_roster.at[idx, 'positions'] = new_positions
+
+            # Delete checkbox
+            if st.checkbox("Delete this player", key=f"delete_{idx}"):
+                to_delete.append(idx)
+
+    # Add new player
+    st.subheader("Add New Player")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        add_name = st.text_input("Player")
+    with col2:
+        add_jersey = st.text_input("Number")
+    with col3:
+        add_b_t = st.text_input("B/T")
+    with col4:
+        add_age = st.text_input("Age")
+    add_positions = st.text_input("Positions")
+
+    if st.button("Add Player"):
+        if add_name:
+            new_row = {
+                "name": add_name,
+                "jersey": add_jersey,
+                "b_t": add_b_t,
+                "age": add_age,
+                "positions": add_positions
+            }
+            edited_roster = pd.concat([edited_roster, pd.DataFrame([new_row])], ignore_index=True)
+            st.success("Player added!")
+        else:
+            st.error("Player name is required.")
+
+    # Save button
     if st.button("💾 Save Roster"):
-        edited.to_excel(ROSTER_FILE, index=False)
-        st.success("Saved!")
+        # Handle deletes
+        if to_delete:
+            delete_names = [edited_roster.at[i, 'name'] for i in to_delete]
+            st.warning(f"You are about to delete {len(to_delete)} player(s): {', '.join(delete_names)}")
+            if st.button("Confirm Delete"):
+                edited_roster = edited_roster.drop(to_delete)
+                st.success("Players deleted!")
+
+        edited_roster.to_excel(ROSTER_FILE, index=False)
+        st.success("Roster saved!")
+        st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -107,7 +175,7 @@ if page == "Roster & Stats":
 # ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
-    st.caption("Check which players are available for today's game.")
+    st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
 
     all_players = sorted(roster['name'].tolist()) if not roster.empty else []
 
@@ -177,6 +245,7 @@ if page == "Defense Rotation Planner":
 
                 st.write(f"**Available players:** {', '.join(base_on_field)}")
 
+                # Live bench eligibility
                 bench_history = {p: 0 for p in team_players}
                 for prev_inning in range(1, inning_num):
                     prev_bench = st.session_state.get(f"bench_{prev_inning}", [])
@@ -314,16 +383,15 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP (Fixed Dropdowns + Working Clear Button) ======================
+# ====================== CREATE LINEUP ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
     
     available_today = st.session_state.get('available_today', roster['name'].tolist())
     
-    st.subheader("Step 2: Manual Batting Order")
+    st.subheader("Step 2: Batting Order")
     
-    # Auto-Fill buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Auto-Fill Batting Order - Value Strategy"):
@@ -405,15 +473,15 @@ if page == "Create Lineup":
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # ====================== CLEAR BUTTON (Fixed) ======================
+    # ====================== CLEAR BUTTON ======================
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
-        # Delete widget states to force reset
+        # Delete widget states
         for i in range(n):
             key = f"batting_spot_{i}"
             if key in st.session_state:
                 del st.session_state[key]
-        st.rerun()   # Force full refresh
+        st.rerun()
 
     if st.button("📥 Download Batting Order CSV"):
         csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
@@ -624,4 +692,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Fixed Clear Button • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • MLB-Style Roster • Orioles ⚾")
