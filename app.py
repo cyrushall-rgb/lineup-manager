@@ -32,14 +32,18 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
-            if old in roster.columns:
-                roster = roster.drop(columns=[old])
+        # Legacy mapping from old column names
+        if 'preferred_pos' in roster.columns:
+            roster = roster.rename(columns={'preferred_pos': 'positions'})
+        if 'league_age' in roster.columns:
+            roster['age'] = roster['league_age']
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
         roster = roster.fillna("")  # No more "nan"
+        # Clean age (no decimal)
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -94,7 +98,7 @@ if page == "Roster & Stats":
     # Sort alphabetically
     st.session_state.roster_df = st.session_state.roster_df.sort_values(by="name").reset_index(drop=True)
 
-    # Headers
+    # Headers (table style)
     col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
     with col1:
         st.subheader("Player")
@@ -107,7 +111,7 @@ if page == "Roster & Stats":
     with col5:
         st.subheader("Positions")
 
-    # Display list
+    # Display rows
     for idx, row in st.session_state.roster_df.iterrows():
         col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
         with col1:
@@ -119,14 +123,19 @@ if page == "Roster & Stats":
         with col3:
             st.write(row['b_t'])
         with col4:
-            st.write(str(row['age']).split('.')[0] if row['age'] != "" else "")  # No decimal
+            st.write(row['age'])
         with col5:
             st.write(row['positions'])
 
-    # Add New Player button
-    if st.button("➕ Add New Player"):
-        st.session_state.show_add_dialog = True
-        st.rerun()
+    col_add, col_save = st.columns(2)
+    with col_add:
+        if st.button("➕ Add New Player"):
+            st.session_state.show_add_dialog = True
+            st.rerun()
+    with col_save:
+        if st.button("💾 Save Roster"):
+            st.session_state.roster_df.to_excel(ROSTER_FILE, index=False)
+            st.success("Roster saved!")
 
     # ====================== ADD DIALOG ======================
     @st.dialog("Add New Player")
@@ -172,7 +181,7 @@ if page == "Roster & Stats":
         name = st.text_input("Player Name", value=row['name'])
         jersey = st.text_input("Jersey Number", value=row['jersey'])
         b_t = st.text_input("B/T", value=row['b_t'])
-        age = st.text_input("Age", value=str(row['age']).split('.')[0] if row['age'] != "" else "")
+        age = st.text_input("Age", value=row['age'])
         
         st.subheader("Positions")
         positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
@@ -205,11 +214,6 @@ if page == "Roster & Stats":
     if 'edit_idx' in st.session_state:
         edit_player_dialog(st.session_state.edit_idx)
         del st.session_state.edit_idx
-
-    # Save button
-    if st.button("💾 Save Roster"):
-        st.session_state.roster_df.to_excel(ROSTER_FILE, index=False)
-        st.success("Roster saved!")
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -743,4 +747,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Pop-up Roster Forms • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Clean Table Roster • Orioles ⚾")
