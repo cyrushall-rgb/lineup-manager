@@ -32,18 +32,15 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Legacy mapping from old column names
-        if 'preferred_pos' in roster.columns:
-            roster = roster.rename(columns={'preferred_pos': 'positions'})
-        if 'league_age' in roster.columns:
-            roster['age'] = roster['league_age']
+        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
+            if old in roster.columns:
+                roster = roster.drop(columns=[old])
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
-        roster = roster.fillna("")  # No more "nan"
-        # Clean age (no decimal)
-        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+        roster = roster.fillna("")  # No "nan"
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]  # No decimal
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -64,7 +61,7 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster in session_state
+# Initialize roster in session_state for stable editing
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -90,130 +87,58 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS ======================
+# ====================== ROSTER & STATS (Restored to original table) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Click a player's name to edit or delete. Use the button below to add a new player.")
+    st.caption("Edit directly in the table. Check 'Delete' to remove a player. Use the button to add a new player.")
 
-    # Sort alphabetically
-    st.session_state.roster_df = st.session_state.roster_df.sort_values(by="name").reset_index(drop=True)
+    # Add Delete column for editing
+    df = st.session_state.roster_df.copy()
+    df['Delete'] = False
 
-    # Headers (table style)
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
+    edited = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "name": "Player",
+            "jersey": "Number",
+            "b_t": "B/T",
+            "age": "Age",
+            "positions": "Positions",
+            "Delete": st.column_config.CheckboxColumn("Delete", help="Check to delete this player")
+        }
+    )
+
+    col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Player")
-    with col2:
-        st.subheader("Number")
-    with col3:
-        st.subheader("B/T")
-    with col4:
-        st.subheader("Age")
-    with col5:
-        st.subheader("Positions")
-
-    # Display rows
-    for idx, row in st.session_state.roster_df.iterrows():
-        col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
-        with col1:
-            if st.button(row['name'], key=f"edit_btn_{idx}", use_container_width=True):
-                st.session_state.edit_idx = idx
-                st.rerun()
-        with col2:
-            st.write(row['jersey'])
-        with col3:
-            st.write(row['b_t'])
-        with col4:
-            st.write(row['age'])
-        with col5:
-            st.write(row['positions'])
-
-    col_add, col_save = st.columns(2)
-    with col_add:
         if st.button("➕ Add New Player"):
-            st.session_state.show_add_dialog = True
+            new_row = pd.DataFrame([{
+                "name": "New Player",
+                "jersey": "",
+                "b_t": "",
+                "age": "",
+                "positions": "",
+                "Delete": False
+            }])
+            st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
             st.rerun()
-    with col_save:
+
+    with col2:
         if st.button("💾 Save Roster"):
-            st.session_state.roster_df.to_excel(ROSTER_FILE, index=False)
-            st.success("Roster saved!")
-
-    # ====================== ADD DIALOG ======================
-    @st.dialog("Add New Player")
-    def add_player_dialog():
-        name = st.text_input("Player Name")
-        jersey = st.text_input("Jersey Number")
-        b_t = st.text_input("B/T (e.g. R/R, L/L)")
-        age = st.text_input("Age")
-        
-        st.subheader("Positions")
-        positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
-        selected_pos = []
-        cols = st.columns(4)
-        for i, pos in enumerate(positions_list):
-            with cols[i % 4]:
-                if st.checkbox(pos, key=f"add_pos_{pos}"):
-                    selected_pos.append(pos)
-        
-        if st.button("Add Player", type="primary"):
-            if name:
-                new_row = pd.DataFrame([{
-                    "name": name,
-                    "jersey": jersey,
-                    "b_t": b_t,
-                    "age": age,
-                    "positions": ", ".join(selected_pos)
-                }])
-                st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
-                st.success("Player added!")
-                st.rerun()
-            else:
-                st.error("Player name is required.")
-
-    if 'show_add_dialog' in st.session_state and st.session_state.show_add_dialog:
-        add_player_dialog()
-        st.session_state.show_add_dialog = False
-
-    # ====================== EDIT DIALOG ======================
-    @st.dialog("Edit Player")
-    def edit_player_dialog(idx):
-        row = st.session_state.roster_df.iloc[idx]
-        
-        name = st.text_input("Player Name", value=row['name'])
-        jersey = st.text_input("Jersey Number", value=row['jersey'])
-        b_t = st.text_input("B/T", value=row['b_t'])
-        age = st.text_input("Age", value=row['age'])
-        
-        st.subheader("Positions")
-        positions_list = ["P", "C", "1B", "2B", "3B", "SS", "OF"]
-        current = str(row['positions']).split(', ') if pd.notna(row['positions']) else []
-        selected_pos = []
-        cols = st.columns(4)
-        for i, pos in enumerate(positions_list):
-            with cols[i % 4]:
-                if st.checkbox(pos, value=pos in current, key=f"edit_pos_{pos}"):
-                    selected_pos.append(pos)
-        
-        col_save, col_delete = st.columns(2)
-        with col_save:
-            if st.button("Save Changes", type="primary"):
-                st.session_state.roster_df.at[idx, 'name'] = name
-                st.session_state.roster_df.at[idx, 'jersey'] = jersey
-                st.session_state.roster_df.at[idx, 'b_t'] = b_t
-                st.session_state.roster_df.at[idx, 'age'] = age
-                st.session_state.roster_df.at[idx, 'positions'] = ", ".join(selected_pos)
-                st.success("Changes saved!")
-                st.rerun()
-        
-        with col_delete:
-            if st.button("Delete Player", type="secondary"):
+            # Handle deletes
+            to_delete = edited[edited['Delete'] == True]
+            if not to_delete.empty:
+                delete_names = to_delete['name'].tolist()
+                st.warning(f"You are about to delete {len(delete_names)} player(s): {', '.join(delete_names)}")
                 if st.button("Confirm Delete"):
-                    st.session_state.roster_df = st.session_state.roster_df.drop(idx).reset_index(drop=True)
-                    st.success("Player deleted!")
-                    st.rerun()
-
-    if 'edit_idx' in st.session_state:
-        edit_player_dialog(st.session_state.edit_idx)
-        del st.session_state.edit_idx
+                    edited = edited[edited['Delete'] == False]
+                    st.success("Players deleted!")
+            edited = edited.drop(columns=["Delete"])
+            st.session_state.roster_df = edited
+            edited.to_excel(ROSTER_FILE, index=False)
+            st.success("Roster saved!")
+            st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -747,4 +672,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Clean Table Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Original Table Roster • Orioles ⚾")
