@@ -61,7 +61,7 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster_df for table editing
+# Initialize roster for editing
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -87,12 +87,12 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Original Table Format) ======================
+# ====================== ROSTER & STATS (Safe Original Table) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Check the 'Delete' box next to any player, then click Save Roster to remove them.")
+    st.caption("Check the Delete box for any player, then click Save Roster. A confirmation will appear.")
 
-    # Prepare table with Delete checkbox
+    # Prepare table
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
         df['Delete'] = False
@@ -133,24 +133,22 @@ if page == "Roster & Stats":
                 st.session_state.pending_deletes = delete_names
                 st.rerun()
             else:
-                # No deletes, just save
                 clean_edited = edited.drop(columns=["Delete"])
                 st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Roster saved!")
                 st.rerun()
 
-    # Confirmation for deletes (outside the Save button)
+    # Confirmation dialog
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
-        st.warning(f"You are about to delete the following player(s): **{', '.join(st.session_state.pending_deletes)}**")
+        st.warning(f"You are about to permanently delete these player(s):\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
         with col_confirm:
             if st.button("Confirm Delete", type="primary"):
-                clean_edited = edited[edited['Delete'] == False]
-                clean_edited = clean_edited.drop(columns=["Delete"])
+                clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
                 st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
-                st.success("Players deleted!")
+                st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
         with col_cancel:
@@ -690,4 +688,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Original Table Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Safe Table Roster • Orioles ⚾")
