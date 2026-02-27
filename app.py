@@ -441,7 +441,6 @@ if page == "Create Lineup":
                 st.session_state.batting_order = order
                 st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
 
-    # Fixed dropdown lineup
     n = len(available_today)
     if 'batting_order' not in st.session_state or len(st.session_state.batting_order) != n:
         st.session_state.batting_order = [""] * n
@@ -505,6 +504,9 @@ if page == "Create Lineup":
                                     position_fills[player][inning] = "BN"
             except:
                 pass
+
+        if not position_fills:
+            st.warning("⚠️ No rotation data found.")
 
         batting_html = """
         <h2>Batting Order</h2>
@@ -684,4 +686,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Safe Table Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Clean Table Roster • Orioles ⚾")
