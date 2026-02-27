@@ -32,15 +32,13 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
-            if old in roster.columns:
-                roster = roster.drop(columns=[old])
+        # Defensive recovery - add missing columns if they were lost
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
         roster = roster.fillna("")
-        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]  # No decimal
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -87,10 +85,10 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Safe Original Table) ======================
+# ====================== ROSTER & STATS (Original Safe Table) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Check the Delete box for any player, then click Save Roster. A confirmation will appear.")
+    st.caption("Check the Delete box, then click Save Roster. A confirmation will appear.")
 
     # Prepare table
     df = st.session_state.roster_df.copy()
@@ -139,7 +137,7 @@ if page == "Roster & Stats":
                 st.success("Roster saved!")
                 st.rerun()
 
-    # Confirmation dialog
+    # Confirmation
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"You are about to permanently delete these player(s):\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
@@ -155,6 +153,14 @@ if page == "Roster & Stats":
             if st.button("Cancel"):
                 del st.session_state.pending_deletes
                 st.rerun()
+
+    # Debug - Raw File (for recovery)
+    with st.expander("🔍 Raw File Debug (shows exactly what is in your file)"):
+        st.write("File path:", ROSTER_FILE)
+        st.dataframe(st.session_state.roster_df)
+        if st.button("Reload from File"):
+            st.session_state.roster_df = load_data()[0]
+            st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -689,3 +695,4 @@ if page == "Reports":
                 st.error(f"Error: {e}")
 
 st.sidebar.caption("v1.0 • Lineup Manager • Safe Table Roster • Orioles ⚾")
+
