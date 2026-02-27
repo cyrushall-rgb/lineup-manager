@@ -39,8 +39,8 @@ def load_data():
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
-        roster = roster.fillna("")  # No "nan"
-        roster['age'] = roster['age'].astype(str).str.split('.').str[0]  # No decimal
+        roster = roster.fillna("")
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -61,7 +61,7 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster in session_state for stable editing
+# Initialize roster_df for table editing
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -87,14 +87,15 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Restored to original table) ======================
+# ====================== ROSTER & STATS (Original Table Format) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Edit directly in the table. Check 'Delete' to remove a player. Use the button to add a new player.")
+    st.caption("Check the 'Delete' box next to any player, then click Save Roster to remove them.")
 
-    # Add Delete column for editing
+    # Prepare table with Delete checkbox
     df = st.session_state.roster_df.copy()
-    df['Delete'] = False
+    if 'Delete' not in df.columns:
+        df['Delete'] = False
 
     edited = st.data_editor(
         df,
@@ -126,19 +127,36 @@ if page == "Roster & Stats":
 
     with col2:
         if st.button("💾 Save Roster"):
-            # Handle deletes
             to_delete = edited[edited['Delete'] == True]
             if not to_delete.empty:
                 delete_names = to_delete['name'].tolist()
-                st.warning(f"You are about to delete {len(delete_names)} player(s): {', '.join(delete_names)}")
-                if st.button("Confirm Delete"):
-                    edited = edited[edited['Delete'] == False]
-                    st.success("Players deleted!")
-            edited = edited.drop(columns=["Delete"])
-            st.session_state.roster_df = edited
-            edited.to_excel(ROSTER_FILE, index=False)
-            st.success("Roster saved!")
-            st.rerun()
+                st.session_state.pending_deletes = delete_names
+                st.rerun()
+            else:
+                # No deletes, just save
+                clean_edited = edited.drop(columns=["Delete"])
+                st.session_state.roster_df = clean_edited
+                clean_edited.to_excel(ROSTER_FILE, index=False)
+                st.success("Roster saved!")
+                st.rerun()
+
+    # Confirmation for deletes (outside the Save button)
+    if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
+        st.warning(f"You are about to delete the following player(s): **{', '.join(st.session_state.pending_deletes)}**")
+        col_confirm, col_cancel = st.columns(2)
+        with col_confirm:
+            if st.button("Confirm Delete", type="primary"):
+                clean_edited = edited[edited['Delete'] == False]
+                clean_edited = clean_edited.drop(columns=["Delete"])
+                st.session_state.roster_df = clean_edited
+                clean_edited.to_excel(ROSTER_FILE, index=False)
+                st.success("Players deleted!")
+                del st.session_state.pending_deletes
+                st.rerun()
+        with col_cancel:
+            if st.button("Cancel"):
+                del st.session_state.pending_deletes
+                st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
