@@ -39,7 +39,7 @@ def load_data():
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
-        roster['jersey'] = roster['jersey'].fillna("")  # No #nan
+        roster['jersey'] = roster['jersey'].fillna("")
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -59,6 +59,10 @@ if os.path.exists(AVAILABLE_FILE):
         pass
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
+
+# Initialize roster_df in session_state (moved to top to fix dialog error)
+if 'roster_df' not in st.session_state:
+    st.session_state.roster_df = roster.copy()
 
 page = st.sidebar.selectbox("Menu", [
     "Roster & Stats",
@@ -88,10 +92,10 @@ if page == "Roster & Stats":
     st.caption("Click a player's name to edit or delete. Use the button below to add a new player.")
 
     # Sort alphabetically
-    roster = roster.sort_values(by="name").reset_index(drop=True)
+    st.session_state.roster_df = st.session_state.roster_df.sort_values(by="name").reset_index(drop=True)
 
-    # Display clean list/table
-    for idx, row in roster.iterrows():
+    # Display clean list
+    for idx, row in st.session_state.roster_df.iterrows():
         col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 2])
         with col1:
             if st.button(row['name'], key=f"edit_btn_{idx}", use_container_width=True):
@@ -726,4 +730,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Pop-up Forms for Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Pop-up Roster Forms • Orioles ⚾")
