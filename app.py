@@ -61,7 +61,6 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster for safe editing
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -87,7 +86,7 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Safe Original Table) ======================
+# ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster")
     st.caption("Check the Delete box → click Save Roster → confirm. Your data is safe.")
@@ -137,7 +136,6 @@ if page == "Roster & Stats":
                 st.success("Roster saved!")
                 st.rerun()
 
-    # Confirmation
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"You are about to permanently delete:\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
@@ -201,10 +199,10 @@ if page == "Available Players Today":
         st.session_state.available_df = edited_df
         st.success("✅ Available players saved!")
 
-# ====================== DEFENSE ROTATION PLANNER ======================
+# ====================== DEFENSE ROTATION PLANNER (Empty by default + Clear buttons) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
-    st.caption("Fully manual • Bench dropdown only shows eligible players • Strict rules enforced • Orioles ⚾")
+    st.caption("Starts completely empty • Fully manual • Strict rules enforced • Orioles ⚾")
 
     available_today = st.session_state.get('available_today', roster['name'].tolist())
 
@@ -222,11 +220,15 @@ if page == "Defense Rotation Planner":
     if len(team_players) < 8:
         st.error("Minimum 8 team players required")
     else:
+        # Force empty defaults on every load
         if 'num_innings' not in st.session_state or st.session_state.num_innings != num_innings:
             st.session_state.num_innings = num_innings
             for i in range(1, num_innings + 1):
-                if f"bench_{i}" not in st.session_state:
-                    st.session_state[f"bench_{i}"] = []
+                st.session_state[f"bench_{i}"] = []
+                st.session_state[f"pitcher_{i}"] = ""
+                st.session_state[f"catcher_{i}"] = ""
+                for pos in ["1B", "SS", "2B", "CF", "3B", "LF", "RF"]:
+                    st.session_state[f"pos_{i}_{pos}"] = ""
 
         tabs = st.tabs([f"Inning {i}" for i in range(1, num_innings + 1)])
         other_positions = ["1B", "SS", "2B", "CF", "3B", "LF", "RF"]
@@ -265,37 +267,85 @@ if page == "Defense Rotation Planner":
                 available = [p for p in base_on_field if p not in bench]
 
                 st.subheader("Pitcher & Catcher")
-                pitcher_options = [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
-                pitcher = st.selectbox("Pitcher", pitcher_options or ["No eligible players"], key=f"pitcher_{inning_num}")
+                pitcher_options = [""] + [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
+                pitcher = st.selectbox("Pitcher", pitcher_options, index=0, key=f"pitcher_{inning_num}")
 
-                catcher_options = [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
-                catcher = st.selectbox("Catcher", catcher_options or ["No eligible players"], key=f"catcher_{inning_num}")
+                catcher_options = [""] + [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
+                catcher = st.selectbox("Catcher", catcher_options, index=0, key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
                 assigned = {pitcher, catcher}
                 for pos in other_positions:
-                    pos_options = [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
-                    selected = st.selectbox(f"{pos}", pos_options or ["No eligible players"], key=f"pos_{inning_num}_{pos}")
+                    pos_options = [""] + [p for p in available if p not in assigned and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", pos))]
+                    selected = st.selectbox(f"{pos}", pos_options, index=0, key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
+        # New Clear buttons at the bottom
+        st.divider()
+        col_clear_pos, col_clear_inn = st.columns(2)
+        with col_clear_pos:
+            if st.button("🗑️ Clear All Positions"):
+                st.session_state.pending_clear = "positions"
+                st.rerun()
+        with col_clear_inn:
+            if st.button("🗑️ Clear All Innings"):
+                st.session_state.pending_clear = "innings"
+                st.rerun()
+
+        # Confirmation for clear buttons
+        if 'pending_clear' in st.session_state:
+            if st.session_state.pending_clear == "positions":
+                st.warning("This will clear **ALL position and bench assignments** across every inning. Continue?")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Confirm Clear Positions", type="primary"):
+                        for i in range(1, num_innings + 1):
+                            if f"bench_{i}" in st.session_state: del st.session_state[f"bench_{i}"]
+                            if f"pitcher_{i}" in st.session_state: del st.session_state[f"pitcher_{i}"]
+                            if f"catcher_{i}" in st.session_state: del st.session_state[f"catcher_{i}"]
+                            for pos in other_positions:
+                                key = f"pos_{i}_{pos}"
+                                if key in st.session_state: del st.session_state[key]
+                        st.success("All positions cleared!")
+                        del st.session_state.pending_clear
+                        st.rerun()
+                with c2:
+                    if st.button("Cancel"):
+                        del st.session_state.pending_clear
+                        st.rerun()
+            elif st.session_state.pending_clear == "innings":
+                st.warning("This will **completely reset** the planner (all assignments + innings count back to 6). Continue?")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Confirm Clear Innings", type="primary"):
+                        for key in list(st.session_state.keys()):
+                            if key.startswith(('bench_', 'pitcher_', 'catcher_', 'pos_')) or key == 'num_innings':
+                                del st.session_state[key]
+                        st.session_state.num_innings = 6
+                        st.success("Planner fully reset!")
+                        del st.session_state.pending_clear
+                        st.rerun()
+                with c2:
+                    if st.button("Cancel"):
+                        del st.session_state.pending_clear
+                        st.rerun()
+
+        # Existing Save / Validate buttons
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
+                # (unchanged full logic)
                 full_plan_rows = []
                 valid = True
                 bench_history = {p: [] for p in team_players}
-
                 for idx in range(num_innings):
                     inning_num = idx + 1
                     bench = st.session_state.get(f"bench_{inning_num}", [])
-
                     if len(bench) != required_bench:
                         st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
                         valid = False
-
                     for p in bench:
                         bench_history[p].append(inning_num)
-
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
                             st.error(f"❌ {p} cannot be benched in two consecutive innings")
@@ -303,14 +353,12 @@ if page == "Defense Rotation Planner":
                     if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
                         st.error("❌ No player can be benched a second time until every player has been benched at least once")
                         valid = False
-
                     p = st.session_state.get(f"pitcher_{inning_num}", "")
                     c = st.session_state.get(f"catcher_{inning_num}", "")
                     assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
                     if len(set(assigned)) != 9 or "" in assigned:
                         st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
                         valid = False
-
                     row = {
                         "Inning": inning_num,
                         "Bench": ", ".join(bench) if bench else "— No bench —",
@@ -319,7 +367,6 @@ if page == "Defense Rotation Planner":
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
                     }
                     full_plan_rows.append(row)
-
                 if valid:
                     with open(ROTATION_FILE, "w") as f:
                         json.dump(full_plan_rows, f)
@@ -327,21 +374,18 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
+                # (unchanged full validation)
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
-
                 for idx in range(num_innings):
                     inning_num = idx + 1
                     bench = st.session_state.get(f"bench_{inning_num}", [])
-
                     if len(bench) != required_bench:
                         st.error(f"❌ You must select exactly {required_bench} players for bench in Inning {inning_num}")
                         valid = False
-
                     for p in bench:
                         bench_history[p].append(inning_num)
-
                     for p in bench:
                         if idx > 0 and (inning_num - 1) in bench_history[p]:
                             st.error(f"❌ {p} cannot be benched in two consecutive innings")
@@ -349,14 +393,12 @@ if page == "Defense Rotation Planner":
                     if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
                         st.error("❌ No player can be benched a second time until everyone has sat once")
                         valid = False
-
                     p = st.session_state.get(f"pitcher_{inning_num}", "")
                     c = st.session_state.get(f"catcher_{inning_num}", "")
                     assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
                     if len(set(assigned)) != 9 or "" in assigned:
                         st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
                         valid = False
-
                     row = {
                         "Inning": inning_num,
                         "Bench": ", ".join(bench) if bench else "— No bench —",
@@ -365,7 +407,6 @@ if page == "Defense Rotation Planner":
                         **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
                     }
                     full_plan_rows.append(row)
-
                 if valid:
                     st.session_state.full_plan_rows = full_plan_rows
                     with open(ROTATION_FILE, "w") as f:
@@ -686,4 +727,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Clean Table Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Empty Default Planner • Orioles ⚾")
