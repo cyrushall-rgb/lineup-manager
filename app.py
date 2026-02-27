@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import json
-import base64
 from datetime import datetime
+import plotly.express as px
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -32,13 +32,15 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Defensive recovery - add missing columns if they were lost
+        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
+            if old in roster.columns:
+                roster = roster.drop(columns=[old])
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
         roster = roster[cols]
         roster = roster.fillna("")
-        roster['age'] = roster['age'].astype(str).str.split('.').str[0]  # No decimal
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
     else:
         roster = pd.DataFrame(columns=cols)
         roster.to_excel(ROSTER_FILE, index=False)
@@ -59,7 +61,7 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-# Initialize roster for editing
+# Initialize roster for safe editing
 if 'roster_df' not in st.session_state:
     st.session_state.roster_df = roster.copy()
 
@@ -85,12 +87,11 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Original Safe Table) ======================
+# ====================== ROSTER & STATS (Safe Original Table) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Check the Delete box, then click Save Roster. A confirmation will appear.")
+    st.caption("Check the Delete box → click Save Roster → confirm. Your data is safe.")
 
-    # Prepare table
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
         df['Delete'] = False
@@ -127,8 +128,7 @@ if page == "Roster & Stats":
         if st.button("💾 Save Roster"):
             to_delete = edited[edited['Delete'] == True]
             if not to_delete.empty:
-                delete_names = to_delete['name'].tolist()
-                st.session_state.pending_deletes = delete_names
+                st.session_state.pending_deletes = to_delete['name'].tolist()
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
@@ -139,7 +139,7 @@ if page == "Roster & Stats":
 
     # Confirmation
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
-        st.warning(f"You are about to permanently delete these player(s):\n**{', '.join(st.session_state.pending_deletes)}**")
+        st.warning(f"You are about to permanently delete:\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
         with col_confirm:
             if st.button("Confirm Delete", type="primary"):
@@ -153,14 +153,6 @@ if page == "Roster & Stats":
             if st.button("Cancel"):
                 del st.session_state.pending_deletes
                 st.rerun()
-
-    # Debug - Raw File (for recovery)
-    with st.expander("🔍 Raw File Debug (shows exactly what is in your file)"):
-        st.write("File path:", ROSTER_FILE)
-        st.dataframe(st.session_state.roster_df)
-        if st.button("Reload from File"):
-            st.session_state.roster_df = load_data()[0]
-            st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -449,7 +441,7 @@ if page == "Create Lineup":
                 st.session_state.batting_order = order
                 st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
 
-    # ====================== FIXED DROPDOWN LINEUP ======================
+    # Fixed dropdown lineup
     n = len(available_today)
     if 'batting_order' not in st.session_state or len(st.session_state.batting_order) != n:
         st.session_state.batting_order = [""] * n
@@ -476,7 +468,6 @@ if page == "Create Lineup":
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # ====================== CLEAR BUTTON ======================
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
         for i in range(n):
@@ -514,9 +505,6 @@ if page == "Create Lineup":
                                     position_fills[player][inning] = "BN"
             except:
                 pass
-
-        if not position_fills:
-            st.warning("⚠️ No rotation data found.")
 
         batting_html = """
         <h2>Batting Order</h2>
@@ -633,7 +621,7 @@ if page == "Create Lineup":
         )
         st.success("✅ Printable Lineup Card ready!")
 
-# ====================== LOG GAME, PITCHER WORKLOAD, REPORTS ======================
+# ====================== LOG GAME ======================
 if page == "Log Game":
     st.header("Log Completed Game - Positions + Bench")
     date = st.date_input("Date", datetime.today())
@@ -660,12 +648,14 @@ if page == "Log Game":
                 st.success("Game saved!")
                 st.rerun()
 
+# ====================== PITCHER WORKLOAD ======================
 if page == "Pitcher Workload":
     st.header("Pitcher Workload & Rest")
     if not games.empty and "Pitches_Thrown" in games.columns:
         fig = px.bar(games[games["Pitches_Thrown"] > 0], x="date", y="Pitches_Thrown", color="Player", title="Pitches by Game")
         st.plotly_chart(fig, use_container_width=True)
 
+# ====================== REPORTS ======================
 if page == "Reports":
     st.header("Season Reports - Positions + Bench")
     if not games.empty:
@@ -695,4 +685,3 @@ if page == "Reports":
                 st.error(f"Error: {e}")
 
 st.sidebar.caption("v1.0 • Lineup Manager • Safe Table Roster • Orioles ⚾")
-
