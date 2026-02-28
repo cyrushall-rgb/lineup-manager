@@ -516,8 +516,8 @@ if page == "Create Lineup":
         <html><head><title>Lineup Card - {game_date}</title>
         <style>body{{font-family:Arial,sans-serif;margin:25px;color:#000;background:white;}} h1{{text-align:center;color:#fc4c02;font-size:32px;}} table{{width:100%;border-collapse:collapse;}} th,td{{border:1px solid #333;padding:8px;}} th{{background:#fc4c02;color:white;}} @page{{margin:15mm;}}</style></head><body>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-            <img src="CLL Orioles logo.jpg" style="height:80px;">
-            <img src="CLL Logo.png" style="height:80px;">
+            <img src="orioles_logo.png" style="height:80px;">
+            <img src="cll_logo.png" style="height:80px;">
         </div>
         <h1>Lineup Card</h1>
         <p style="text-align:center;font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
@@ -587,4 +587,5 @@ if page == "Reports":
             st.rerun()
 
 st.sidebar.caption("v1.0 • GameChanger Import Restored • Orioles ⚾")
+
 
