@@ -2,17 +2,20 @@ import streamlit as st
 import pandas as pd
 import os
 import json
+import shutil
 from datetime import datetime
 import plotly.express as px
 
 DATA_DIR = "data"
+BACKUP_DIR = f"{DATA_DIR}/backups"
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
 ROSTER_FILE = f"{DATA_DIR}/roster.xlsx"
 GAMES_FILE = f"{DATA_DIR}/games.xlsx"
 STATS_FILE = f"{DATA_DIR}/season_stats.xlsx"
 ROTATION_FILE = f"{DATA_DIR}/current_rotation.json"
 AVAILABLE_FILE = f"{DATA_DIR}/available_today.json"
-CURRENT_LINEUP_FILE = f"{DATA_DIR}/current_lineup.json"   # NEW - saves the lineup
+CURRENT_LINEUP_FILE = f"{DATA_DIR}/current_lineup.json"
 
 st.set_page_config(
     page_title="Lineup Manager",
@@ -28,6 +31,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚾ Lineup Manager - v1.0")
+
+def backup_roster():
+    if os.path.exists(ROSTER_FILE):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy(ROSTER_FILE, f"{BACKUP_DIR}/roster_backup_{timestamp}.xlsx")
 
 def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
@@ -87,10 +95,10 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS ======================
+# ====================== ROSTER & STATS (Ultra-Safe Version) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Check the Delete box → click Save Roster → confirm. Your data is safe.")
+    st.caption("Check Delete box → Save Roster → confirm. Data is now protected.")
 
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
@@ -110,7 +118,7 @@ if page == "Roster & Stats":
         }
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("➕ Add New Player"):
             new_row = pd.DataFrame([{
@@ -126,25 +134,38 @@ if page == "Roster & Stats":
 
     with col2:
         if st.button("💾 Save Roster"):
+            backup_roster()  # Safety backup before every save
             to_delete = edited[edited['Delete'] == True]
             if not to_delete.empty:
                 st.session_state.pending_deletes = to_delete['name'].tolist()
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
+                # Force exact 5 columns
+                for col in ["name", "jersey", "b_t", "age", "positions"]:
+                    if col not in clean_edited.columns:
+                        clean_edited[col] = ""
+                clean_edited = clean_edited[["name", "jersey", "b_t", "age", "positions"]]
                 st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Roster saved!")
                 st.rerun()
+
+    with col3:
+        if st.button("🔄 Recover Roster from File"):
+            st.session_state.roster_df = load_data()[0]
+            st.success("Roster recovered from file!")
+            st.rerun()
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"You are about to permanently delete:\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
         with col_confirm:
             if st.button("Confirm Delete", type="primary"):
+                backup_roster()
                 clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
+                st.session_state.roster_df = clean_edited
                 st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
@@ -280,7 +301,6 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options, index=0, key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        # Clear buttons
         st.divider()
         col_clear_pos, col_clear_inn = st.columns(2)
         with col_clear_pos:
@@ -329,7 +349,6 @@ if page == "Defense Rotation Planner":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
-                # (full save logic unchanged - same as before)
                 full_plan_rows = []
                 valid = True
                 bench_history = {p: [] for p in team_players}
@@ -369,7 +388,6 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                # (full validation logic unchanged)
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
@@ -414,20 +432,18 @@ if page == "Defense Rotation Planner":
                                      "text/csv")
                     st.success("✅ All innings validated!")
 
-# ====================== CREATE LINEUP (Updated) ======================
+# ====================== CREATE LINEUP ======================
 if page == "Create Lineup":
     st.header("Create Today’s Batting Order")
     game_date = st.date_input("Game Date", datetime.today())
     
     available_today = st.session_state.get('available_today', roster['name'].tolist())
     
-    st.subheader("Batting Order")   # ← "Step 2: " removed
+    st.subheader("Batting Order")
 
-    # Auto-fill buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Auto-Fill Batting Order - Value Strategy"):
-            # (unchanged)
             if season_stats.empty:
                 st.error("Import GameChanger stats first!")
             else:
@@ -457,7 +473,6 @@ if page == "Create Lineup":
 
     with col2:
         if st.button("Auto-Fill Batting Order - OPS"):
-            # (unchanged)
             if season_stats.empty:
                 st.error("Import GameChanger stats first!")
             else:
@@ -470,7 +485,6 @@ if page == "Create Lineup":
 
     with col3:
         if st.button("Auto-Fill Batting Order - BA"):
-            # (unchanged)
             if season_stats.empty:
                 st.error("Import GameChanger stats first!")
             else:
@@ -481,7 +495,6 @@ if page == "Create Lineup":
                 st.session_state.batting_order = order
                 st.success("✅ Auto-filled by Batting Average (highest to lowest)!")
 
-    # Fixed dropdown lineup
     n = len(available_today)
     if 'batting_order' not in st.session_state or len(st.session_state.batting_order) != n:
         st.session_state.batting_order = [""] * n
@@ -508,7 +521,6 @@ if page == "Create Lineup":
         df = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order})
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Clear button
     if st.button("🗑️ Clear Lineup Selections"):
         st.session_state.batting_order = [""] * n
         for i in range(n):
@@ -517,19 +529,17 @@ if page == "Create Lineup":
                 del st.session_state[key]
         st.rerun()
 
-    # NEW: Save Current Lineup button
     if st.button("💾 Save Current Lineup"):
         with open(CURRENT_LINEUP_FILE, "w") as f:
             json.dump(st.session_state.batting_order, f)
-        st.success("✅ Lineup saved! It will automatically load next time you open this page.")
+        st.success("✅ Lineup saved! It will automatically load next time.")
 
-    # Auto-load saved lineup (if it matches current available players)
     if os.path.exists(CURRENT_LINEUP_FILE):
         try:
             with open(CURRENT_LINEUP_FILE, "r") as f:
-                saved_lineup = json.load(f)
-            if len(saved_lineup) == n and all(p in available_today or p == "" for p in saved_lineup):
-                st.session_state.batting_order = saved_lineup
+                saved = json.load(f)
+            if len(saved) == n and all(p in available_today or p == "" for p in saved):
+                st.session_state.batting_order = saved
         except:
             pass
 
@@ -538,7 +548,6 @@ if page == "Create Lineup":
         st.download_button("Download for GameChanger", csv, f"batting_order_{game_date}.csv", "text/csv")
 
     if st.button("🖨️ Printable Game Day Card"):
-        # (unchanged printable card code)
         position_fills = {}
         if os.path.exists(ROTATION_FILE):
             try:
@@ -745,4 +754,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Persistent Lineup Save • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Bulletproof Roster • Orioles ⚾")
