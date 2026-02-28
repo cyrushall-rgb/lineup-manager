@@ -65,6 +65,31 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
+# ====================== ADD NEW PLAYER MODAL FORM ======================
+@st.dialog("Add New Player")
+def add_player_dialog():
+    name = st.text_input("Full Name *")
+    jersey = st.text_input("Jersey Number")
+    b_t = st.text_input("Bats/Throws (e.g. R/R)")
+    age = st.text_input("Age")
+    positions = st.text_input("Positions (comma separated, e.g. P, C, 1B, OF)")
+
+    if st.button("Add Player", type="primary"):
+        if name.strip():
+            new_row = pd.DataFrame([{
+                "name": name.strip(),
+                "jersey": jersey.strip(),
+                "b_t": b_t.strip(),
+                "age": age.strip(),
+                "positions": positions.strip()
+            }])
+            st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
+            st.session_state.roster_df.to_excel(ROSTER_FILE, index=False)
+            st.success(f"✅ {name.strip()} added!")
+            st.rerun()
+        else:
+            st.error("Player name is required")
+
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster & Stats")
@@ -90,9 +115,7 @@ if page == "Roster & Stats":
     col1, col2 = st.columns(2)
     with col1:
         if st.button("➕ Add New Player"):
-            new_row = pd.DataFrame([{"name":"New Player","jersey":"","b_t":"","age":"","positions":"","Delete":False}])
-            st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
-            st.rerun()
+            add_player_dialog()   # ← Now opens fillable modal form
 
     with col2:
         if st.button("💾 Save Roster"):
@@ -118,7 +141,6 @@ if page == "Roster & Stats":
                 del st.session_state.pending_deletes
                 st.rerun()
 
-    # ====================== GAMECHANGER IMPORT (re-added) ======================
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
     if gc_file:
@@ -565,3 +587,4 @@ if page == "Reports":
             st.rerun()
 
 st.sidebar.caption("v1.0 • GameChanger Import Restored • Orioles ⚾")
+
