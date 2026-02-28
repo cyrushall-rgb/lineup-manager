@@ -4,6 +4,7 @@ import os
 import json
 from datetime import datetime
 import plotly.express as px
+import base64
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -65,7 +66,7 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ADD NEW PLAYER MODAL FORM ======================
+# ====================== ADD NEW PLAYER MODAL ======================
 @st.dialog("Add New Player")
 def add_player_dialog():
     name = st.text_input("Full Name *")
@@ -112,10 +113,10 @@ if page == "Roster & Stats":
         }
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("➕ Add New Player"):
-            add_player_dialog()   # ← Now opens fillable modal form
+            add_player_dialog()
 
     with col2:
         if st.button("💾 Save Roster"):
@@ -123,7 +124,17 @@ if page == "Roster & Stats":
             clean = clean[["name","jersey","b_t","age","positions"]]
             clean.to_excel(ROSTER_FILE, index=False)
             st.session_state.roster_df = clean
-            st.success("✅ Roster saved to GitHub")
+            st.success("✅ Roster saved to running app")
+
+    with col3:
+        if st.button("📥 Download Current roster.xlsx"):
+            with open(ROSTER_FILE, "rb") as f:
+                st.download_button(
+                    label="Download for GitHub",
+                    data=f,
+                    file_name="roster.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
@@ -491,6 +502,24 @@ if page == "Create Lineup":
             except:
                 pass
 
+        # ====================== ROBUST LOGO EMBEDDING ======================
+        orioles_b64 = ""
+        cll_b64 = ""
+        logo_files = ["orioles_logo.png", "CLL Orioles logo.jpg", "CLL Orioles logo.png"]
+        cll_files = ["cll_logo.png", "CLL Logo.png"]
+        for f in logo_files:
+            path = os.path.join(DATA_DIR, f)
+            if os.path.exists(path):
+                with open(path, "rb") as img:
+                    orioles_b64 = base64.b64encode(img.read()).decode()
+                break
+        for f in cll_files:
+            path = os.path.join(DATA_DIR, f)
+            if os.path.exists(path):
+                with open(path, "rb") as img:
+                    cll_b64 = base64.b64encode(img.read()).decode()
+                break
+
         batting_html = """<h2>Batting Order</h2><table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px;"><tr><th style="width:6%; text-align:center;">#</th><th style="width:6%; text-align:center;">#</th><th style="width:28%;">Player</th><th style="width:8%; text-align:center;">1</th><th style="width:8%; text-align:center;">2</th><th style="width:8%; text-align:center;">3</th><th style="width:8%; text-align:center;">4</th><th style="width:8%; text-align:center;">5</th><th style="width:8%; text-align:center;">6</th></tr>"""
         for i, player in enumerate(new_order):
             jersey = roster.loc[roster['name'] == player, 'jersey'].iloc[0] if not roster[roster['name'] == player].empty else "—"
@@ -516,8 +545,8 @@ if page == "Create Lineup":
         <html><head><title>Lineup Card - {game_date}</title>
         <style>body{{font-family:Arial,sans-serif;margin:25px;color:#000;background:white;}} h1{{text-align:center;color:#fc4c02;font-size:32px;}} table{{width:100%;border-collapse:collapse;}} th,td{{border:1px solid #333;padding:8px;}} th{{background:#fc4c02;color:white;}} @page{{margin:15mm;}}</style></head><body>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-            <img src="orioles_logo.png" style="height:80px;">
-            <img src="cll_logo.png" style="height:80px;">
+            <img src="data:image/png;base64,{orioles_b64}" style="height:80px;">
+            <img src="data:image/png;base64,{cll_b64}" style="height:80px;">
         </div>
         <h1>Lineup Card</h1>
         <p style="text-align:center;font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
@@ -527,7 +556,7 @@ if page == "Create Lineup":
         """
 
         st.download_button("📥 Download HTML (open & print)", full_html, f"lineup_card_{game_date}.html", "text/html")
-        st.success("✅ Printable card ready!")
+        st.success("✅ Printable card ready (logos embedded)!")
 
 # ====================== LOG GAME ======================
 if page == "Log Game":
@@ -586,6 +615,4 @@ if page == "Reports":
             st.success("✅ All game data deleted!")
             st.rerun()
 
-st.sidebar.caption("v1.0 • GameChanger Import Restored • Orioles ⚾")
-
-
+st.sidebar.caption("v1.0 • Download Roster + Embedded Logos • Orioles ⚾")
