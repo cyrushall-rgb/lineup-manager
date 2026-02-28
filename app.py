@@ -5,7 +5,6 @@ import json
 from datetime import datetime
 import plotly.express as px
 
-# RELATIVE PATH - works on local AND on Streamlit Cloud
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -24,14 +23,25 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Clean old columns
-        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
+        # Robust mapping for old column names from earlier versions
+        mapping = {
+            'Jersey Number': 'jersey', 'Jersey': 'jersey',
+            'Bats/Throws': 'b_t', 'B/T': 'b_t',
+            'League Age': 'age', 'Age': 'age',
+            'Preferred Positions': 'positions', 'Positions': 'positions',
+            'league_age': 'age', 'preferred_pos': 'positions'
+        }
+        roster = roster.rename(columns=mapping)
+        # Drop any remaining old columns
+        for old in ["player_id", "dob", "Player ID", "Date of Birth"]:
             if old in roster.columns:
                 roster = roster.drop(columns=[old])
+        # Ensure all required columns exist
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
-        roster = roster[cols].fillna("")
+        roster = roster[cols]
+        roster = roster.fillna("")
         roster['age'] = roster['age'].astype(str).str.split('.').str[0]
         return roster
     else:
@@ -39,7 +49,6 @@ def load_data():
         roster.to_excel(ROSTER_FILE, index=False)
         return roster
 
-# Load once at start
 roster = load_data()
 games = pd.read_excel(GAMES_FILE) if os.path.exists(GAMES_FILE) else pd.DataFrame()
 season_stats = pd.read_excel(STATS_FILE) if os.path.exists(STATS_FILE) else pd.DataFrame()
@@ -60,36 +69,17 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (with full diagnostics) ======================
+# ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster & Stats")
     
-    # ==================== DIAGNOSTIC BOX ====================
-    st.subheader("🔍 Path Debug (tell me what this shows)")
-    st.info(f"""
-    **Current working directory:** `{os.getcwd()}`
-    
-    **Roster file path:** `{ROSTER_FILE}`
-    
-    **File exists on Cloud/GitHub?** `{os.path.exists(ROSTER_FILE)}`
-    
-    **Files in data/ folder:** {os.listdir(DATA_DIR) if os.path.exists(DATA_DIR) else "Folder missing"}
-    
-    **Rows loaded from roster.xlsx:** `{len(roster)}`
-    
-    **First 5 players (should show your 11 players):**  
-    {list(roster['name'].head(5)) if not roster.empty else "No data"}
-    """)
-    
-    if st.button("🔄 Force Reload Roster from GitHub Repo"):
-        roster = load_data()
-        st.session_state.roster_df = roster.copy()
-        st.success("✅ Reloaded directly from GitHub data/roster.xlsx")
-        st.rerun()
+    # Always force fresh load from GitHub file
+    st.session_state.roster_df = roster.copy()
 
-    # Normal roster editor
-    if 'roster_df' not in st.session_state:
-        st.session_state.roster_df = roster.copy()
+    # Raw Data Preview - shows exactly what is in your roster.xlsx
+    with st.expander("🔍 Raw Data Preview from roster.xlsx (click to expand)"):
+        st.dataframe(roster, use_container_width=True)
+        st.caption("If you see age and positions here → they will now appear in the table below.")
 
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
@@ -98,8 +88,11 @@ if page == "Roster & Stats":
     edited = st.data_editor(
         df, num_rows="dynamic", use_container_width=True,
         column_config={
-            "name": "Player", "jersey": "Number", "b_t": "B/T",
-            "age": "Age", "positions": "Positions",
+            "name": "Player",
+            "jersey": "Number",
+            "b_t": "B/T",
+            "age": "Age",
+            "positions": "Positions",
             "Delete": st.column_config.CheckboxColumn("Delete")
         }
     )
@@ -117,40 +110,39 @@ if page == "Roster & Stats":
             clean = clean[["name","jersey","b_t","age","positions"]]
             clean.to_excel(ROSTER_FILE, index=False)
             st.session_state.roster_df = clean
-            st.success("✅ Saved to data/roster.xlsx (will appear on next reload)")
+            st.success("✅ Saved to data/roster.xlsx on GitHub")
+
+    if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
+        st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Confirm Delete", type="primary"):
+                clean = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
+                clean.to_excel(ROSTER_FILE, index=False)
+                st.session_state.roster_df = clean
+                st.success("Players deleted")
+                del st.session_state.pending_deletes
+                st.rerun()
+        with c2:
+            if st.button("Cancel"):
+                del st.session_state.pending_deletes
+                st.rerun()
 
 # ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
     st.header("Available Players Today")
-    st.caption("Check which players are available for today's game. This controls Defense Rotation Planner and Create Lineup.")
-
     all_players = sorted(roster['name'].tolist()) if not roster.empty else []
-
     if 'available_df' not in st.session_state or len(st.session_state.available_df) != len(all_players):
         current_available = st.session_state.get('available_today', all_players)
-        df = pd.DataFrame({
-            "Player": all_players,
-            "Available Today": [player in current_available for player in all_players]
-        })
+        df = pd.DataFrame({"Player": all_players, "Available Today": [player in current_available for player in all_players]})
         st.session_state.available_df = df
-
-    edited_df = st.data_editor(
-        st.session_state.available_df,
-        column_config={
-            "Player": st.column_config.TextColumn("Player", disabled=True),
-            "Available Today": st.column_config.CheckboxColumn("Available Today", default=False)
-        },
-        hide_index=True,
-        use_container_width=True
-    )
-
+    edited_df = st.data_editor(st.session_state.available_df, column_config={"Player": st.column_config.TextColumn(disabled=True), "Available Today": st.column_config.CheckboxColumn()}, hide_index=True, use_container_width=True)
     if st.button("💾 Save Available Players"):
         selected = edited_df[edited_df["Available Today"] == True]["Player"].tolist()
         st.session_state.available_today = selected
         with open(AVAILABLE_FILE, "w") as f:
             json.dump(selected, f)
-        st.session_state.available_df = edited_df
-        st.success("✅ Available players saved!")
+        st.success("Saved!")
 
 # ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
@@ -690,4 +682,5 @@ if page == "Reports":
                 st.error(f"Error: {e}")
 
 st.sidebar.caption("v1.0 • Lineup Manager • Always Retained Roster • Orioles ⚾")
+
 
