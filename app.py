@@ -33,7 +33,9 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Force exactly these 5 columns - never drop data
+        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
+            if old in roster.columns:
+                roster = roster.drop(columns=[old])
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
@@ -60,6 +62,9 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
+if 'roster_df' not in st.session_state:
+    st.session_state.roster_df = roster.copy()
+
 page = st.sidebar.selectbox("Menu", [
     "Roster & Stats",
     "Available Players Today",
@@ -82,13 +87,10 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Always Retained) ======================
+# ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Data is always retained from roster.xlsx until you edit it. Use Save Roster after changes.")
-
-    # Always load fresh from file on this page
-    st.session_state.roster_df = load_data()[0].copy()
+    st.caption("Check the Delete box → click Save Roster → confirm. Your data is safe.")
 
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
@@ -130,14 +132,9 @@ if page == "Roster & Stats":
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
-                # Force exactly the 5 columns
-                for col in ["name", "jersey", "b_t", "age", "positions"]:
-                    if col not in clean_edited.columns:
-                        clean_edited[col] = ""
-                clean_edited = clean_edited[["name", "jersey", "b_t", "age", "positions"]]
                 st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
-                st.success("Roster saved to file!")
+                st.success("Roster saved!")
                 st.rerun()
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
@@ -146,8 +143,8 @@ if page == "Roster & Stats":
         with col_confirm:
             if st.button("Confirm Delete", type="primary"):
                 clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.session_state.roster_df = clean_edited
+                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
@@ -283,54 +280,58 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options, index=0, key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-        st.divider()
-        col_clear_pos, col_clear_inn = st.columns(2)
-        with col_clear_pos:
-            if st.button("🗑️ Clear All Positions"):
-                st.session_state.pending_clear = "positions"
-                st.rerun()
-        with col_clear_inn:
-            if st.button("🗑️ Clear All Innings"):
-                st.session_state.pending_clear = "innings"
-                st.rerun()
+                # Clear button now inside each tab - clears ONLY this inning
+                if st.button("🗑️ Clear All Positions", key=f"clear_pos_{inning_num}"):
+                    st.session_state.pending_clear = inning_num
+                    st.rerun()
 
-        if 'pending_clear' in st.session_state:
-            if st.session_state.pending_clear == "positions":
-                st.warning("This will clear ALL position and bench assignments across every inning. Continue?")
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("✅ Confirm Clear Positions", type="primary"):
-                        for i in range(1, num_innings + 1):
-                            for k in [f"bench_{i}", f"pitcher_{i}", f"catcher_{i}"] + [f"pos_{i}_{pos}" for pos in other_positions]:
+                # Per-inning confirmation
+                if 'pending_clear' in st.session_state and st.session_state.pending_clear == inning_num:
+                    st.warning(f"This will clear **all positions and bench** for **Inning {inning_num} only**. Continue?")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("✅ Confirm Clear This Inning", type="primary"):
+                            for k in [f"bench_{inning_num}", f"pitcher_{inning_num}", f"catcher_{inning_num}"] + [f"pos_{inning_num}_{pos}" for pos in other_positions]:
                                 if k in st.session_state:
                                     del st.session_state[k]
-                        st.success("All positions cleared!")
-                        del st.session_state.pending_clear
-                        st.rerun()
-                with c2:
-                    if st.button("Cancel"):
-                        del st.session_state.pending_clear
-                        st.rerun()
-            elif st.session_state.pending_clear == "innings":
-                st.warning("This will completely reset the planner (all assignments + innings back to 6). Continue?")
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("✅ Confirm Clear Innings", type="primary"):
-                        for key in list(st.session_state.keys()):
-                            if key.startswith(('bench_', 'pitcher_', 'catcher_', 'pos_')) or key == 'num_innings':
-                                del st.session_state[key]
-                        st.session_state.num_innings = 6
-                        st.success("Planner fully reset!")
-                        del st.session_state.pending_clear
-                        st.rerun()
-                with c2:
-                    if st.button("Cancel"):
-                        del st.session_state.pending_clear
-                        st.rerun()
+                            st.success(f"Inning {inning_num} cleared!")
+                            del st.session_state.pending_clear
+                            st.rerun()
+                    with c2:
+                        if st.button("Cancel"):
+                            del st.session_state.pending_clear
+                            st.rerun()
 
+        # Global clear remains at the bottom
+        st.divider()
+        col_clear_pos, col_clear_inn = st.columns(2)
+        with col_clear_inn:
+            if st.button("🗑️ Clear All Innings"):
+                st.session_state.pending_clear = "all"
+                st.rerun()
+
+        if 'pending_clear' in st.session_state and st.session_state.pending_clear == "all":
+            st.warning("This will completely reset the planner (all assignments + innings back to 6). Continue?")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✅ Confirm Clear All Innings", type="primary"):
+                    for key in list(st.session_state.keys()):
+                        if key.startswith(('bench_', 'pitcher_', 'catcher_', 'pos_')) or key == 'num_innings':
+                            del st.session_state[key]
+                    st.session_state.num_innings = 6
+                    st.success("Planner fully reset!")
+                    del st.session_state.pending_clear
+                    st.rerun()
+            with c2:
+                if st.button("Cancel"):
+                    del st.session_state.pending_clear
+                    st.rerun()
+
+        # Save / Validate buttons
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
+                # (full save logic unchanged)
                 full_plan_rows = []
                 valid = True
                 bench_history = {p: [] for p in team_players}
@@ -370,6 +371,7 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
+                # (full validation unchanged)
                 valid = True
                 full_plan_rows = []
                 bench_history = {p: [] for p in team_players}
@@ -740,4 +742,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Always Retained Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Per-Inning Clear • Orioles ⚾")
