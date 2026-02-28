@@ -41,9 +41,7 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
-            if old in roster.columns:
-                roster = roster.drop(columns=[old])
+        # Force exact 5 columns (prevents any future loss)
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
@@ -70,9 +68,6 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
-if 'roster_df' not in st.session_state:
-    st.session_state.roster_df = roster.copy()
-
 page = st.sidebar.selectbox("Menu", [
     "Roster & Stats",
     "Available Players Today",
@@ -95,10 +90,13 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Ultra-Safe + Fixed Recover) ======================
+# ====================== ROSTER & STATS (Always Retained) ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Check Delete box → Save Roster → confirm. Data is now protected.")
+    st.caption("Data is always retained until you edit it. Check Delete box to remove players.")
+
+    # Always reload fresh from file (prevents any loss from code changes)
+    st.session_state.roster_df = load_data()[0].copy()
 
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
@@ -141,6 +139,7 @@ if page == "Roster & Stats":
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
+                # Force exact 5 columns (prevents any future loss)
                 for col in ["name", "jersey", "b_t", "age", "positions"]:
                     if col not in clean_edited.columns:
                         clean_edited[col] = ""
@@ -150,13 +149,6 @@ if page == "Roster & Stats":
                 st.success("Roster saved!")
                 st.rerun()
 
-    # Full-width Recover button
-    if st.button("🔄 Recover Roster from File", use_container_width=True):
-        backup_roster()
-        st.session_state.roster_df = load_data()[0].copy()
-        st.success(f"✅ Recovered {len(st.session_state.roster_df)} players from file!")
-        st.rerun()
-
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"You are about to permanently delete:\n**{', '.join(st.session_state.pending_deletes)}**")
         col_confirm, col_cancel = st.columns(2)
@@ -164,8 +156,8 @@ if page == "Roster & Stats":
             if st.button("Confirm Delete", type="primary"):
                 backup_roster()
                 clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
+                st.session_state.roster_df = clean_edited
                 st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
@@ -754,4 +746,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Bulletproof Recovery • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Always Retained Roster • Orioles ⚾")
