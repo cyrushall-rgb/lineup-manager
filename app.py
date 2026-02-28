@@ -23,7 +23,6 @@ def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Auto-fix old column names from earlier versions
         mapping = {
             'Jersey Number': 'jersey', 'Jersey': 'jersey',
             'Bats/Throws': 'b_t', 'B/T': 'b_t',
@@ -51,13 +50,8 @@ games = pd.read_excel(GAMES_FILE) if os.path.exists(GAMES_FILE) else pd.DataFram
 season_stats = pd.read_excel(STATS_FILE) if os.path.exists(STATS_FILE) else pd.DataFrame()
 
 page = st.sidebar.selectbox("Menu", [
-    "Roster & Stats",
-    "Available Players Today",
-    "Defense Rotation Planner",
-    "Create Lineup",
-    "Log Game",
-    "Pitcher Workload",
-    "Reports"
+    "Roster & Stats", "Available Players Today", "Defense Rotation Planner",
+    "Create Lineup", "Log Game", "Pitcher Workload", "Reports"
 ])
 
 def can_play(positions, position):
@@ -75,7 +69,6 @@ def can_play(positions, position):
 if page == "Roster & Stats":
     st.header("Roster & Stats")
     
-    # Fresh load from GitHub every time
     st.session_state.roster_df = roster.copy()
 
     df = st.session_state.roster_df.copy()
@@ -124,6 +117,21 @@ if page == "Roster & Stats":
             if st.button("Cancel"):
                 del st.session_state.pending_deletes
                 st.rerun()
+
+    # ====================== GAMECHANGER IMPORT (re-added) ======================
+    st.header("Import GameChanger Season Stats CSV")
+    gc_file = st.file_uploader("Upload GC CSV", type="csv")
+    if gc_file:
+        gc = pd.read_csv(gc_file)
+        if 'Player' in gc.columns:
+            gc['Player_lower'] = gc['Player'].str.lower().str.strip()
+            roster['name_lower'] = roster['name'].str.lower().str.strip()
+            keep = [c for c in ['H', 'AB', 'K', 'AVG', 'OBP', 'SLG', 'OPS', 'IP', 'ERA'] if c in gc.columns]
+            merged = roster.merge(gc[['Player_lower'] + keep], left_on='name_lower', right_on='Player_lower', how='left')
+            season_stats = merged[['name'] + keep].copy()
+            season_stats.to_excel(STATS_FILE, index=False)
+            st.success("✅ GC stats merged!")
+            st.dataframe(season_stats, use_container_width=True)
 
 # ====================== AVAILABLE PLAYERS TODAY ======================
 if page == "Available Players Today":
@@ -226,7 +234,6 @@ if page == "Defense Rotation Planner":
                     selected = st.selectbox(f"{pos}", pos_options, index=0, key=f"pos_{inning_num}_{pos}")
                     assigned.add(selected)
 
-                # Clear ONLY current inning
                 if st.button("🗑️ Clear All Positions (this inning only)", key=f"clear_pos_{inning_num}"):
                     st.session_state.pending_clear = inning_num
                     st.rerun()
@@ -438,7 +445,6 @@ if page == "Create Lineup":
         st.download_button("Download", csv, f"batting_order_{game_date}.csv", "text/csv")
 
     if st.button("🖨️ Printable Game Day Card"):
-        # (full printable card code from previous versions - unchanged)
         position_fills = {}
         if os.path.exists(ROTATION_FILE):
             try:
@@ -558,4 +564,4 @@ if page == "Reports":
             st.success("✅ All game data deleted!")
             st.rerun()
 
-st.sidebar.caption("v1.0 • Clean Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • GameChanger Import Restored • Orioles ⚾")
