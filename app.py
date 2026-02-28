@@ -95,7 +95,7 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Ultra-Safe Version) ======================
+# ====================== ROSTER & STATS (Ultra-Safe + Fixed Recover) ======================
 if page == "Roster & Stats":
     st.header("Roster")
     st.caption("Check Delete box → Save Roster → confirm. Data is now protected.")
@@ -118,7 +118,7 @@ if page == "Roster & Stats":
         }
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("➕ Add New Player"):
             new_row = pd.DataFrame([{
@@ -134,14 +134,13 @@ if page == "Roster & Stats":
 
     with col2:
         if st.button("💾 Save Roster"):
-            backup_roster()  # Safety backup before every save
+            backup_roster()
             to_delete = edited[edited['Delete'] == True]
             if not to_delete.empty:
                 st.session_state.pending_deletes = to_delete['name'].tolist()
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
-                # Force exact 5 columns
                 for col in ["name", "jersey", "b_t", "age", "positions"]:
                     if col not in clean_edited.columns:
                         clean_edited[col] = ""
@@ -151,11 +150,12 @@ if page == "Roster & Stats":
                 st.success("Roster saved!")
                 st.rerun()
 
-    with col3:
-        if st.button("🔄 Recover Roster from File"):
-            st.session_state.roster_df = load_data()[0]
-            st.success("Roster recovered from file!")
-            st.rerun()
+    # Full-width Recover button
+    if st.button("🔄 Recover Roster from File", use_container_width=True):
+        backup_roster()
+        st.session_state.roster_df = load_data()[0].copy()
+        st.success(f"✅ Recovered {len(st.session_state.roster_df)} players from file!")
+        st.rerun()
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"You are about to permanently delete:\n**{', '.join(st.session_state.pending_deletes)}**")
@@ -164,8 +164,8 @@ if page == "Roster & Stats":
             if st.button("Confirm Delete", type="primary"):
                 backup_roster()
                 clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.session_state.roster_df = clean_edited
+                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
@@ -754,4 +754,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Bulletproof Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Bulletproof Recovery • Orioles ⚾")
