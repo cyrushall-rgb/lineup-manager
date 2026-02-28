@@ -2,14 +2,11 @@ import streamlit as st
 import pandas as pd
 import os
 import json
-import shutil
 from datetime import datetime
 import plotly.express as px
 
 DATA_DIR = "data"
-BACKUP_DIR = f"{DATA_DIR}/backups"
 os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(BACKUP_DIR, exist_ok=True)
 ROSTER_FILE = f"{DATA_DIR}/roster.xlsx"
 GAMES_FILE = f"{DATA_DIR}/games.xlsx"
 STATS_FILE = f"{DATA_DIR}/season_stats.xlsx"
@@ -32,16 +29,13 @@ st.markdown("""
 
 st.title("⚾ Lineup Manager - v1.0")
 
-def backup_roster():
-    if os.path.exists(ROSTER_FILE):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        shutil.copy(ROSTER_FILE, f"{BACKUP_DIR}/roster_backup_{timestamp}.xlsx")
-
 def load_data():
     cols = ["name", "jersey", "b_t", "age", "positions"]
     if os.path.exists(ROSTER_FILE):
         roster = pd.read_excel(ROSTER_FILE)
-        # Force exact 5 columns (prevents any future loss)
+        for old in ["player_id", "dob", "Player ID", "Date of Birth", "league_age", "preferred_pos"]:
+            if old in roster.columns:
+                roster = roster.drop(columns=[old])
         for col in cols:
             if col not in roster.columns:
                 roster[col] = ""
@@ -68,6 +62,9 @@ if os.path.exists(AVAILABLE_FILE):
 elif 'available_today' not in st.session_state:
     st.session_state.available_today = roster['name'].tolist()
 
+if 'roster_df' not in st.session_state:
+    st.session_state.roster_df = roster.copy()
+
 page = st.sidebar.selectbox("Menu", [
     "Roster & Stats",
     "Available Players Today",
@@ -90,13 +87,10 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ROSTER & STATS (Always Retained) ======================
+# ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster")
-    st.caption("Data is always retained until you edit it. Check Delete box to remove players.")
-
-    # Always reload fresh from file (prevents any loss from code changes)
-    st.session_state.roster_df = load_data()[0].copy()
+    st.caption("Check the Delete box → click Save Roster → confirm. Your data is safe.")
 
     df = st.session_state.roster_df.copy()
     if 'Delete' not in df.columns:
@@ -132,18 +126,12 @@ if page == "Roster & Stats":
 
     with col2:
         if st.button("💾 Save Roster"):
-            backup_roster()
             to_delete = edited[edited['Delete'] == True]
             if not to_delete.empty:
                 st.session_state.pending_deletes = to_delete['name'].tolist()
                 st.rerun()
             else:
                 clean_edited = edited.drop(columns=["Delete"])
-                # Force exact 5 columns (prevents any future loss)
-                for col in ["name", "jersey", "b_t", "age", "positions"]:
-                    if col not in clean_edited.columns:
-                        clean_edited[col] = ""
-                clean_edited = clean_edited[["name", "jersey", "b_t", "age", "positions"]]
                 st.session_state.roster_df = clean_edited
                 clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Roster saved!")
@@ -154,10 +142,9 @@ if page == "Roster & Stats":
         col_confirm, col_cancel = st.columns(2)
         with col_confirm:
             if st.button("Confirm Delete", type="primary"):
-                backup_roster()
                 clean_edited = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.session_state.roster_df = clean_edited
+                clean_edited.to_excel(ROSTER_FILE, index=False)
                 st.success("Players deleted successfully!")
                 del st.session_state.pending_deletes
                 st.rerun()
@@ -662,6 +649,10 @@ if page == "Create Lineup":
             th {{background: #fc4c02; color: white;}}
             @page {{ margin: 15mm; }}
         </style></head><body>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <img src="CLL Orioles logo.jpg" style="height: 80px;">
+            <img src="CLL Logo.png" style="height: 80px;">
+        </div>
         <h1>Lineup Card</h1>
         <p style="text-align:center; font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
         
@@ -746,4 +737,4 @@ if page == "Reports":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-st.sidebar.caption("v1.0 • Lineup Manager • Always Retained Roster • Orioles ⚾")
+st.sidebar.caption("v1.0 • Lineup Manager • Orioles ⚾")
