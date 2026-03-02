@@ -24,9 +24,8 @@ st.title("⚾ Lineup Manager - v1.0")
 # ====================== GOOGLE SHEETS ROSTER (with ID column + fixed scope) ======================
 def get_roster():
     if "gcp_service_account" not in st.secrets:
-        st.error("Google Sheets not configured yet. Please check Secrets.")
+        st.error("Google Sheets not configured yet.")
         return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
-    
     try:
         creds = Credentials.from_service_account_info(
             st.secrets["gcp_service_account"],
@@ -45,7 +44,7 @@ def get_roster():
         return roster
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
-        st.info("Double-check your Secrets format and that the sheet is shared with the service account email.")
+        st.info("Double-check your Secrets format (private_key must be in triple quotes) and that the Google Sheets API is enabled in your Google Cloud project.")
         return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
 
 roster = get_roster()
