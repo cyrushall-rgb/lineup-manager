@@ -620,3 +620,4 @@ if page == "Reports":
             st.rerun()
 
 st.sidebar.caption("v1.0 • Google Sheets + ID Column • Permanent Data • Orioles ⚾")
+
