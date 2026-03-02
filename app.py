@@ -4,12 +4,13 @@ import os
 import json
 from datetime import datetime
 import plotly.express as px
+import gspread
+from google.oauth2.service_account import Credentials
 import base64
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-ROSTER_FILE = os.path.join(DATA_DIR, "roster.xlsx")
 GAMES_FILE = os.path.join(DATA_DIR, "games.xlsx")
 STATS_FILE = os.path.join(DATA_DIR, "season_stats.xlsx")
 ROTATION_FILE = os.path.join(DATA_DIR, "current_rotation.json")
@@ -20,33 +21,25 @@ st.set_page_config(page_title="Lineup Manager", layout="wide", initial_sidebar_s
 
 st.title("⚾ Lineup Manager - v1.0")
 
-def load_data():
-    cols = ["name", "jersey", "b_t", "age", "positions"]
-    if os.path.exists(ROSTER_FILE):
-        roster = pd.read_excel(ROSTER_FILE)
-        mapping = {
-            'Jersey Number': 'jersey', 'Jersey': 'jersey',
-            'Bats/Throws': 'b_t', 'B/T': 'b_t',
-            'League Age': 'age', 'Age': 'age',
-            'Preferred Positions': 'positions', 'Positions': 'positions',
-            'league_age': 'age', 'preferred_pos': 'positions'
-        }
-        roster = roster.rename(columns=mapping)
-        for old in ["player_id", "dob", "Player ID", "Date of Birth"]:
-            if old in roster.columns:
-                roster = roster.drop(columns=[old])
-        for col in cols:
-            if col not in roster.columns:
-                roster[col] = ""
-        roster = roster[cols].fillna("")
-        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
-        return roster
-    else:
-        roster = pd.DataFrame(columns=cols)
-        roster.to_excel(ROSTER_FILE, index=False)
-        return roster
+# ====================== GOOGLE SHEETS ROSTER (with ID column) ======================
+def get_roster():
+    if "gcp_service_account" not in st.secrets:
+        st.error("Google Sheets not configured yet.")
+        return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+    client = gspread.authorize(creds)
+    sheet = client.open("LittleLeague Roster").sheet1
+    data = sheet.get_all_records()
+    roster = pd.DataFrame(data)
+    cols = ["ID", "name", "jersey", "b_t", "age", "positions"]
+    for col in cols:
+        if col not in roster.columns:
+            roster[col] = ""
+    roster = roster[cols].fillna("")
+    roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+    return roster
 
-roster = load_data()
+roster = get_roster()
 games = pd.read_excel(GAMES_FILE) if os.path.exists(GAMES_FILE) else pd.DataFrame()
 season_stats = pd.read_excel(STATS_FILE) if os.path.exists(STATS_FILE) else pd.DataFrame()
 
@@ -66,9 +59,10 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ADD NEW PLAYER MODAL ======================
+# ====================== ADD NEW PLAYER MODAL (with ID) ======================
 @st.dialog("Add New Player")
 def add_player_dialog():
+    id_val = st.text_input("ID (unique number) *")
     name = st.text_input("Full Name *")
     jersey = st.text_input("Jersey Number")
     b_t = st.text_input("Bats/Throws (e.g. R/R)")
@@ -76,20 +70,15 @@ def add_player_dialog():
     positions = st.text_input("Positions (comma separated, e.g. P, C, 1B, OF)")
 
     if st.button("Add Player", type="primary"):
-        if name.strip():
-            new_row = pd.DataFrame([{
-                "name": name.strip(),
-                "jersey": jersey.strip(),
-                "b_t": b_t.strip(),
-                "age": age.strip(),
-                "positions": positions.strip()
-            }])
-            st.session_state.roster_df = pd.concat([st.session_state.roster_df, new_row], ignore_index=True)
-            st.session_state.roster_df.to_excel(ROSTER_FILE, index=False)
-            st.success(f"✅ {name.strip()} added!")
+        if id_val.strip() and name.strip():
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+            client = gspread.authorize(creds)
+            sheet = client.open("LittleLeague Roster").sheet1
+            sheet.append_row([id_val.strip(), name.strip(), jersey.strip(), b_t.strip(), age.strip(), positions.strip()])
+            st.success(f"✅ {name.strip()} (ID: {id_val}) added!")
             st.rerun()
         else:
-            st.error("Player name is required")
+            st.error("ID and Player name are required")
 
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
@@ -104,6 +93,7 @@ if page == "Roster & Stats":
     edited = st.data_editor(
         df, num_rows="dynamic", use_container_width=True,
         column_config={
+            "ID": "ID",
             "name": "Player",
             "jersey": "Number",
             "b_t": "B/T",
@@ -113,28 +103,22 @@ if page == "Roster & Stats":
         }
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("➕ Add New Player"):
             add_player_dialog()
 
     with col2:
         if st.button("💾 Save Roster"):
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+            client = gspread.authorize(creds)
+            sheet = client.open("LittleLeague Roster").sheet1
             clean = edited.drop(columns=["Delete"])
-            clean = clean[["name","jersey","b_t","age","positions"]]
-            clean.to_excel(ROSTER_FILE, index=False)
+            clean = clean[["ID","name","jersey","b_t","age","positions"]]
+            sheet.clear()
+            sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
             st.session_state.roster_df = clean
-            st.success("✅ Roster saved to running app")
-
-    with col3:
-        if st.button("📥 Download Current roster.xlsx"):
-            with open(ROSTER_FILE, "rb") as f:
-                st.download_button(
-                    label="Download for GitHub",
-                    data=f,
-                    file_name="roster.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            st.success("✅ Roster saved to Google Sheet (permanent!)")
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
@@ -142,7 +126,11 @@ if page == "Roster & Stats":
         with c1:
             if st.button("Confirm Delete", type="primary"):
                 clean = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                clean.to_excel(ROSTER_FILE, index=False)
+                creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+                client = gspread.authorize(creds)
+                sheet = client.open("LittleLeague Roster").sheet1
+                sheet.clear()
+                sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
                 st.session_state.roster_df = clean
                 st.success("Players deleted")
                 del st.session_state.pending_deletes
@@ -502,7 +490,7 @@ if page == "Create Lineup":
             except:
                 pass
 
-        # ====================== ROBUST LOGO EMBEDDING ======================
+        # ====================== EMBED LOGOS ======================
         orioles_b64 = ""
         cll_b64 = ""
         logo_files = ["orioles_logo.png", "CLL Orioles logo.jpg", "CLL Orioles logo.png"]
@@ -556,7 +544,7 @@ if page == "Create Lineup":
         """
 
         st.download_button("📥 Download HTML (open & print)", full_html, f"lineup_card_{game_date}.html", "text/html")
-        st.success("✅ Printable card ready (logos embedded)!")
+        st.success("✅ Printable card ready!")
 
 # ====================== LOG GAME ======================
 if page == "Log Game":
@@ -615,4 +603,4 @@ if page == "Reports":
             st.success("✅ All game data deleted!")
             st.rerun()
 
-st.sidebar.caption("v1.0 • Download Roster + Embedded Logos • Orioles ⚾")
+st.sidebar.caption("v1.0 • Google Sheets + ID Column • Permanent Data • Orioles ⚾")
