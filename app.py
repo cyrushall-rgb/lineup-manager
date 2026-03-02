@@ -21,23 +21,32 @@ st.set_page_config(page_title="Lineup Manager", layout="wide", initial_sidebar_s
 
 st.title("⚾ Lineup Manager - v1.0")
 
-# ====================== GOOGLE SHEETS ROSTER (with ID column) ======================
+# ====================== GOOGLE SHEETS ROSTER (with ID column + fixed scope) ======================
 def get_roster():
     if "gcp_service_account" not in st.secrets:
-        st.error("Google Sheets not configured yet.")
+        st.error("Google Sheets not configured yet. Please check Secrets.")
         return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
-    client = gspread.authorize(creds)
-    sheet = client.open("LittleLeague Roster").sheet1
-    data = sheet.get_all_records()
-    roster = pd.DataFrame(data)
-    cols = ["ID", "name", "jersey", "b_t", "age", "positions"]
-    for col in cols:
-        if col not in roster.columns:
-            roster[col] = ""
-    roster = roster[cols].fillna("")
-    roster['age'] = roster['age'].astype(str).str.split('.').str[0]
-    return roster
+    
+    try:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        client = gspread.authorize(creds)
+        sheet = client.open("LittleLeague Roster").sheet1
+        data = sheet.get_all_records()
+        roster = pd.DataFrame(data)
+        cols = ["ID", "name", "jersey", "b_t", "age", "positions"]
+        for col in cols:
+            if col not in roster.columns:
+                roster[col] = ""
+        roster = roster[cols].fillna("")
+        roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+        return roster
+    except Exception as e:
+        st.error(f"Google Sheets connection error: {str(e)}")
+        st.info("Double-check your Secrets format and that the sheet is shared with the service account email.")
+        return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
 
 roster = get_roster()
 games = pd.read_excel(GAMES_FILE) if os.path.exists(GAMES_FILE) else pd.DataFrame()
@@ -71,7 +80,10 @@ def add_player_dialog():
 
     if st.button("Add Player", type="primary"):
         if id_val.strip() and name.strip():
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
             client = gspread.authorize(creds)
             sheet = client.open("LittleLeague Roster").sheet1
             sheet.append_row([id_val.strip(), name.strip(), jersey.strip(), b_t.strip(), age.strip(), positions.strip()])
@@ -110,7 +122,10 @@ if page == "Roster & Stats":
 
     with col2:
         if st.button("💾 Save Roster"):
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
             client = gspread.authorize(creds)
             sheet = client.open("LittleLeague Roster").sheet1
             clean = edited.drop(columns=["Delete"])
@@ -126,7 +141,10 @@ if page == "Roster & Stats":
         with c1:
             if st.button("Confirm Delete", type="primary"):
                 clean = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+                creds = Credentials.from_service_account_info(
+                    st.secrets["gcp_service_account"],
+                    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                )
                 client = gspread.authorize(creds)
                 sheet = client.open("LittleLeague Roster").sheet1
                 sheet.clear()
