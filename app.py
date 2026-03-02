@@ -262,7 +262,7 @@ if page == "Defense Rotation Planner":
                 pitcher_options = [""] + [p for p in available if p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "P")]
                 pitcher = st.selectbox("Pitcher", pitcher_options, index=0, key=f"pitcher_{inning_num}")
 
-                catcher_options = [""] + [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C")]
+                catcher_options = [""] + [p for p in available if p != pitcher and (p == "Pool Player" or can_play(roster.loc[roster['name']==p, 'positions'].iloc[0] if len(roster.loc[roster['name']==p]) > 0 else "", "C"))]
                 catcher = st.selectbox("Catcher", catcher_options, index=0, key=f"catcher_{inning_num}")
 
                 st.subheader("Remaining Defense")
@@ -620,4 +620,3 @@ if page == "Reports":
             st.rerun()
 
 st.sidebar.caption("v1.0 • Google Sheets + ID Column • Permanent Data • Orioles ⚾")
-
