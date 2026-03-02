@@ -18,10 +18,9 @@ AVAILABLE_FILE = os.path.join(DATA_DIR, "available_today.json")
 CURRENT_LINEUP_FILE = os.path.join(DATA_DIR, "current_lineup.json")
 
 st.set_page_config(page_title="Lineup Manager", layout="wide", initial_sidebar_state="expanded")
-
 st.title("⚾ Lineup Manager - v1.0")
 
-# ====================== GOOGLE SHEETS ROSTER (with ID column + fixed scope) ======================
+# ====================== GOOGLE SHEETS ROSTER (SCOPES ADDED EVERYWHERE) ======================
 def get_roster():
     if "gcp_service_account" not in st.secrets:
         st.error("Google Sheets not configured yet.")
@@ -41,10 +40,11 @@ def get_roster():
                 roster[col] = ""
         roster = roster[cols].fillna("")
         roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+        st.success("✅ Connected to Google Sheets")
         return roster
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
-        st.info("Double-check your Secrets format (private_key must be in triple quotes) and that the Google Sheets API is enabled in your Google Cloud project.")
+        st.info("Service account email being used: streamlit-roster@streamlit-lineup-app.iam.gserviceaccount.com")
         return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
 
 roster = get_roster()
@@ -67,7 +67,7 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ADD NEW PLAYER MODAL (with ID) ======================
+# ====================== ADD NEW PLAYER MODAL (SCOPES ADDED) ======================
 @st.dialog("Add New Player")
 def add_player_dialog():
     id_val = st.text_input("ID (unique number) *")
@@ -91,10 +91,9 @@ def add_player_dialog():
         else:
             st.error("ID and Player name are required")
 
-# ====================== ROSTER & STATS ======================
+# ====================== ROSTER & STATS (SCOPES ADDED) ======================
 if page == "Roster & Stats":
     st.header("Roster & Stats")
-    
     st.session_state.roster_df = roster.copy()
 
     df = st.session_state.roster_df.copy()
@@ -131,8 +130,8 @@ if page == "Roster & Stats":
             clean = clean[["ID","name","jersey","b_t","age","positions"]]
             sheet.clear()
             sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
-            st.session_state.roster_df = clean
             st.success("✅ Roster saved to Google Sheet (permanent!)")
+            st.rerun()
 
     if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
         st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
@@ -620,3 +619,4 @@ if page == "Reports":
             st.rerun()
 
 st.sidebar.caption("v1.0 • Google Sheets + ID Column • Permanent Data • Orioles ⚾")
+
