@@ -490,7 +490,6 @@ if page == "Create Lineup":
             except:
                 pass
 
-        # ====================== EMBED LOGOS ======================
         orioles_b64 = ""
         cll_b64 = ""
         logo_files = ["orioles_logo.png", "CLL Orioles logo.jpg", "CLL Orioles logo.png"]
