@@ -170,7 +170,7 @@ if page == "Available Players Today":
             json.dump(selected, f)
         st.success("✅ Saved!")
 
-# ====================== DEFENSE ROTATION PLANNER (syntax fixed) ======================
+# ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
     st.caption("Starts completely empty • Fully manual • Strict rules enforced • Orioles ⚾")
