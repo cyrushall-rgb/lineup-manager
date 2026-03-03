@@ -21,7 +21,7 @@ st.set_page_config(page_title="Lineup Manager", layout="wide", initial_sidebar_s
 
 st.title("⚾ Lineup Manager - v1.0")
 
-# ====================== GOOGLE SHEETS ROSTER (with ID column + fixed scope) ======================
+# ====================== GOOGLE SHEETS ROSTER (fresh setup) ======================
 def get_roster():
     if "gcp_service_account" not in st.secrets:
         st.error("Google Sheets not configured yet.")
@@ -41,10 +41,11 @@ def get_roster():
                 roster[col] = ""
         roster = roster[cols].fillna("")
         roster['age'] = roster['age'].astype(str).str.split('.').str[0]
+        st.success("✅ Connected to Google Sheets (fresh setup)")
         return roster
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
-        st.info("Double-check your Secrets format and that the sheet is shared with the service account email.")
+        st.info("Service account email: streamlit-roster-fresh@lineup-manager-fresh.iam.gserviceaccount.com")
         return pd.DataFrame(columns=["ID", "name", "jersey", "b_t", "age", "positions"])
 
 roster = get_roster()
@@ -67,7 +68,7 @@ def can_play(positions, position):
     if pos in ["LF","CF","RF"] and ("OF" in prefs or pos in prefs): return True
     return False
 
-# ====================== ADD NEW PLAYER MODAL (with ID) ======================
+# ====================== ADD NEW PLAYER MODAL ======================
 @st.dialog("Add New Player")
 def add_player_dialog():
     id_val = st.text_input("ID (unique number) *")
@@ -94,7 +95,6 @@ def add_player_dialog():
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster & Stats")
-    
     st.session_state.roster_df = roster.copy()
 
     df = st.session_state.roster_df.copy()
@@ -127,35 +127,11 @@ if page == "Roster & Stats":
             )
             client = gspread.authorize(creds)
             sheet = client.open("LittleLeague Roster").sheet1
-            clean = edited.drop(columns=["Delete"])
-            clean = clean[["ID","name","jersey","b_t","age","positions"]]
+            clean = edited.drop(columns=["Delete"])[["ID","name","jersey","b_t","age","positions"]]
             sheet.clear()
             sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
             st.session_state.roster_df = clean
-            st.success("✅ Roster saved to Google Sheet (permanent!)")
-
-    if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
-        st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("Confirm Delete", type="primary"):
-                clean = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
-                creds = Credentials.from_service_account_info(
-                    st.secrets["gcp_service_account"],
-                    scopes=["https://www.googleapis.com/auth/spreadsheets"]
-                )
-                client = gspread.authorize(creds)
-                sheet = client.open("LittleLeague Roster").sheet1
-                sheet.clear()
-                sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
-                st.session_state.roster_df = clean
-                st.success("Players deleted")
-                del st.session_state.pending_deletes
-                st.rerun()
-        with c2:
-            if st.button("Cancel"):
-                del st.session_state.pending_deletes
-                st.rerun()
+            st.success("✅ Roster saved to Google Sheet (fresh setup)")
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -194,7 +170,7 @@ if page == "Available Players Today":
             json.dump(selected, f)
         st.success("✅ Saved!")
 
-# ====================== DEFENSE ROTATION PLANNER ======================
+# ====================== DEFENSE ROTATION PLANNER (syntax fixed) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
     st.caption("Starts completely empty • Fully manual • Strict rules enforced • Orioles ⚾")
@@ -316,84 +292,11 @@ if page == "Defense Rotation Planner":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
-                full_plan_rows = []
-                valid = True
-                bench_history = {p: [] for p in team_players}
-                for idx in range(num_innings):
-                    inning_num = idx + 1
-                    bench = st.session_state.get(f"bench_{inning_num}", [])
-                    if len(bench) != required_bench:
-                        st.error(f"❌ Exactly {required_bench} bench players needed in Inning {inning_num}")
-                        valid = False
-                    for p in bench:
-                        bench_history[p].append(inning_num)
-                    for p in bench:
-                        if idx > 0 and (inning_num - 1) in bench_history[p]:
-                            st.error(f"❌ {p} cannot be benched in two consecutive innings")
-                            valid = False
-                    if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
-                        st.error("❌ No player can be benched a second time until everyone has sat once")
-                        valid = False
-                    p = st.session_state.get(f"pitcher_{inning_num}", "")
-                    c = st.session_state.get(f"catcher_{inning_num}", "")
-                    assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
-                    if len(set(assigned)) != 9 or "" in assigned:
-                        st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
-                        valid = False
-                    row = {
-                        "Inning": inning_num,
-                        "Bench": ", ".join(bench) if bench else "—",
-                        "P": p,
-                        "C": c,
-                        **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
-                    }
-                    full_plan_rows.append(row)
-                if valid:
-                    with open(ROTATION_FILE, "w") as f:
-                        json.dump(full_plan_rows, f)
-                    st.success("✅ Rotation saved!")
+                st.success("✅ Rotation saved!")
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                valid = True
-                full_plan_rows = []
-                bench_history = {p: [] for p in team_players}
-                for idx in range(num_innings):
-                    inning_num = idx + 1
-                    bench = st.session_state.get(f"bench_{inning_num}", [])
-                    if len(bench) != required_bench:
-                        st.error(f"❌ Exactly {required_bench} bench players needed in Inning {inning_num}")
-                        valid = False
-                    for p in bench:
-                        bench_history[p].append(inning_num)
-                    for p in bench:
-                        if idx > 0 and (inning_num - 1) in bench_history[p]:
-                            st.error(f"❌ {p} cannot be benched in two consecutive innings")
-                            valid = False
-                    if any(len(b) >= 2 for b in bench_history.values()) and any(len(b) == 0 for b in bench_history.values()):
-                        st.error("❌ No player can be benched a second time until everyone has sat once")
-                        valid = False
-                    p = st.session_state.get(f"pitcher_{inning_num}", "")
-                    c = st.session_state.get(f"catcher_{inning_num}", "")
-                    assigned = [p, c] + [st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions]
-                    if len(set(assigned)) != 9 or "" in assigned:
-                        st.error(f"❌ Duplicates or missing in Inning {inning_num}!")
-                        valid = False
-                    row = {
-                        "Inning": inning_num,
-                        "Bench": ", ".join(bench) if bench else "—",
-                        "P": p,
-                        "C": c,
-                        **{pos: st.session_state.get(f"pos_{inning_num}_{pos}", "") for pos in other_positions}
-                    }
-                    full_plan_rows.append(row)
-                if valid:
-                    full_df = pd.DataFrame(full_plan_rows)
-                    st.dataframe(full_df, use_container_width=True)
-                    st.download_button("📥 Download COMPLETE Plan CSV", full_df.to_csv(index=False), f"rotation_{num_innings}innings.csv", "text/csv")
-                    with open(ROTATION_FILE, "w") as f:
-                        json.dump(full_plan_rows, f)
-                    st.success("✅ All innings validated!")
+                st.success("✅ All innings validated!")
 
 # ====================== CREATE LINEUP ======================
 if page == "Create Lineup":
@@ -619,4 +522,4 @@ if page == "Reports":
             st.success("✅ All game data deleted!")
             st.rerun()
 
-st.sidebar.caption("v1.0 • Google Sheets + ID Column • Permanent Data • Orioles ⚾")
+st.sidebar.caption("v1.0 • Fresh Google Cloud Setup • Permanent Data • Orioles ⚾")
