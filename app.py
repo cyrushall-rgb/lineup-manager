@@ -21,7 +21,7 @@ st.set_page_config(page_title="Lineup Manager", layout="wide", initial_sidebar_s
 
 st.title("⚾ Lineup Manager - v1.0")
 
-# ====================== GOOGLE SHEETS ROSTER (fresh setup) ======================
+# ====================== GOOGLE SHEETS ROSTER (fresh setup with Drive scope) ======================
 def get_roster():
     if "gcp_service_account" not in st.secrets:
         st.error("Google Sheets not configured yet.")
@@ -29,7 +29,7 @@ def get_roster():
     try:
         creds = Credentials.from_service_account_info(
             st.secrets["gcp_service_account"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         )
         client = gspread.authorize(creds)
         sheet = client.open("LittleLeague Roster").sheet1
@@ -41,7 +41,7 @@ def get_roster():
                 roster[col] = ""
         roster = roster[cols].fillna("")
         roster['age'] = roster['age'].astype(str).str.split('.').str[0]
-        st.success("✅ Connected to Google Sheets (fresh setup)")
+        st.success("✅ Connected to Google Sheets (fresh setup + Drive scope)")
         return roster
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
@@ -82,7 +82,7 @@ def add_player_dialog():
         if id_val.strip() and name.strip():
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"],
-                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             )
             client = gspread.authorize(creds)
             sheet = client.open("LittleLeague Roster").sheet1
@@ -123,7 +123,7 @@ if page == "Roster & Stats":
         if st.button("💾 Save Roster"):
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"],
-                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             )
             client = gspread.authorize(creds)
             sheet = client.open("LittleLeague Roster").sheet1
