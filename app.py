@@ -41,7 +41,6 @@ def get_roster():
                 roster[col] = ""
         roster = roster[cols].fillna("")
         roster['age'] = roster['age'].astype(str).str.split('.').str[0]
-        st.success("✅ Connected to Google Sheets (fresh setup + Drive scope)")
         return roster
     except Exception as e:
         st.error(f"Google Sheets connection error: {str(e)}")
@@ -95,6 +94,7 @@ def add_player_dialog():
 # ====================== ROSTER & STATS ======================
 if page == "Roster & Stats":
     st.header("Roster & Stats")
+    
     st.session_state.roster_df = roster.copy()
 
     df = st.session_state.roster_df.copy()
@@ -131,7 +131,30 @@ if page == "Roster & Stats":
             sheet.clear()
             sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
             st.session_state.roster_df = clean
-            st.success("✅ Roster saved to Google Sheet (fresh setup)")
+            st.success("✅ Roster saved to Google Sheet (permanent!)")
+
+    if 'pending_deletes' in st.session_state and st.session_state.pending_deletes:
+        st.warning(f"Delete these players?\n**{', '.join(st.session_state.pending_deletes)}**")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Confirm Delete", type="primary"):
+                clean = st.session_state.roster_df[~st.session_state.roster_df['name'].isin(st.session_state.pending_deletes)]
+                creds = Credentials.from_service_account_info(
+                    st.secrets["gcp_service_account"],
+                    scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                )
+                client = gspread.authorize(creds)
+                sheet = client.open("LittleLeague Roster").sheet1
+                sheet.clear()
+                sheet.update([clean.columns.values.tolist()] + clean.values.tolist())
+                st.session_state.roster_df = clean
+                st.success("Players deleted")
+                del st.session_state.pending_deletes
+                st.rerun()
+        with c2:
+            if st.button("Cancel"):
+                del st.session_state.pending_deletes
+                st.rerun()
 
     st.header("Import GameChanger Season Stats CSV")
     gc_file = st.file_uploader("Upload GC CSV", type="csv")
@@ -170,7 +193,7 @@ if page == "Available Players Today":
             json.dump(selected, f)
         st.success("✅ Saved!")
 
-# ====================== DEFENSE ROTATION PLANNER ======================
+# ====================== DEFENSE ROTATION PLANNER (with new tracking table) ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
     st.caption("Starts completely empty • Fully manual • Strict rules enforced • Orioles ⚾")
@@ -292,7 +315,7 @@ if page == "Defense Rotation Planner":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
-                st.success("✅ Rotation saved!")
+                    st.success("✅ Rotation saved!")
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
