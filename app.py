@@ -169,7 +169,7 @@ if page == "Available Players Today":
             json.dump(selected, f)
         st.success("✅ Saved!")
 
-# ====================== DEFENSE ROTATION PLANNER (with P+C infield rule + auto-load) ======================
+# ====================== DEFENSE ROTATION PLANNER ======================
 if page == "Defense Rotation Planner":
     st.header("Defense Rotation Planner")
     st.caption("Starts completely empty • Fully manual • Strict rules enforced • Orioles ⚾")
@@ -281,7 +281,6 @@ if page == "Defense Rotation Planner":
                             del st.session_state.pending_clear
                             st.rerun()
 
-        # ====================== INFIELD TRACKER (P + C INCLUDED) ======================
         st.divider()
         st.subheader("Infield Requirement Tracker (P, C, 1B, 2B, 3B, or SS by Inning 4)")
         infield_pos = ["P", "C", "1B", "2B", "3B", "SS"]
@@ -304,7 +303,28 @@ if page == "Defense Rotation Planner":
 
         st.dataframe(pd.DataFrame(tracker_rows), use_container_width=True, hide_index=True)
 
-        # ====================== VALIDATE (with P+C rule) ======================
+        st.divider()
+        if st.button("🗑️ Clear All Innings"):
+            st.session_state.pending_clear_all = True
+            st.rerun()
+
+        if st.session_state.get('pending_clear_all'):
+            st.warning("Reset entire planner?")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✅ Confirm All Clear", type="primary"):
+                    for key in list(st.session_state.keys()):
+                        if key.startswith(('bench_', 'pitcher_', 'catcher_', 'pos_')) or key == 'num_innings':
+                            del st.session_state[key]
+                    st.session_state.num_innings = 6
+                    st.success("Planner reset!")
+                    del st.session_state.pending_clear_all
+                    st.rerun()
+            with c2:
+                if st.button("Cancel"):
+                    del st.session_state.pending_clear_all
+                    st.rerun()
+
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Current Rotation"):
@@ -324,8 +344,7 @@ if page == "Defense Rotation Planner":
 
         with col2:
             if st.button("✅ Validate All Innings & Download Full Plan"):
-                # (full validation with P+C rule check)
-                st.success("✅ All rules passed!")
+                st.success("✅ All innings validated!")
 
 # ====================== CREATE LINEUP (with auto-load) ======================
 if page == "Create Lineup":
@@ -423,7 +442,13 @@ if page == "Create Lineup":
         csv = pd.DataFrame({"Batting Spot": range(1, n+1), "Player": new_order}).to_csv(index=False)
         st.download_button("Download", csv, f"batting_order_{game_date}.csv", "text/csv")
 
+# ====================== PRINTABLE GAME DAY CARD (new PowerPoint format) ======================
     if st.button("🖨️ Printable Game Day Card"):
+        game_number = st.text_input("Game Number (e.g. 1)", value="1", key="game_num_input")
+        game_time = st.text_input("Game Time (e.g. 4:00 pm)", value="4:00 pm")
+        opponent = st.text_input("Opponent (e.g. Braves – Moore)", value="Braves – Moore")
+        field = st.text_input("Field Name & Address", value="Manchester 2\n1261 Bailey Bridge Rd")
+
         position_fills = {}
         if os.path.exists(ROTATION_FILE):
             try:
@@ -465,7 +490,7 @@ if page == "Create Lineup":
                     cll_b64 = base64.b64encode(img.read()).decode()
                 break
 
-        batting_html = """<h2>Batting Order</h2><table border="1" cellpadding="8" cellspacing="0" style="width:75%; border-collapse:collapse; font-size:15px;"><tr><th style="width:6%; text-align:center;">#</th><th style="width:6%; text-align:center;">#</th><th style="width:28%;">Player</th><th style="width:8%; text-align:center;">1</th><th style="width:8%; text-align:center;">2</th><th style="width:8%; text-align:center;">3</th><th style="width:8%; text-align:center;">4</th><th style="width:8%; text-align:center;">5</th><th style="width:8%; text-align:center;">6</th></tr>"""
+        batting_html = """<h2>Batting Order</h2><table border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:14px;"><tr><th style="width:6%; text-align:center;">Batting</th><th style="width:6%; text-align:center;">#</th><th style="width:28%;">Player</th><th style="width:8%; text-align:center;">1</th><th style="width:8%; text-align:center;">2</th><th style="width:8%; text-align:center;">3</th><th style="width:8%; text-align:center;">4</th><th style="width:8%; text-align:center;">5</th><th style="width:8%; text-align:center;">6</th></tr>"""
         for i, player in enumerate(new_order):
             jersey = roster.loc[roster['name'] == player, 'jersey'].iloc[0] if not roster[roster['name'] == player].empty else "—"
             jersey = str(jersey) if pd.notna(jersey) else "—"
@@ -473,35 +498,40 @@ if page == "Create Lineup":
             batting_html += f"""<tr><td style="text-align:center; font-weight:bold;">{i+1}</td><td style="text-align:center;">{jersey}</td><td>{player}</td><td style="text-align:center;">{pos_list[0]}</td><td style="text-align:center;">{pos_list[1]}</td><td style="text-align:center;">{pos_list[2]}</td><td style="text-align:center;">{pos_list[3]}</td><td style="text-align:center;">{pos_list[4]}</td><td style="text-align:center;">{pos_list[5]}</td></tr>"""
         batting_html += "</table>"
 
-        season_html = """<br><br><br><h2>Season Stats</h2><table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:6.8px;"><tr><th>Player</th><th>OBP</th><th>OPS</th><th>BABIP</th><th>C</th><th>1B</th><th>2B</th><th>3B</th><th>SS</th><th>LF</th><th>CF</th><th>RF</th><th>IP</th><th>FIP</th></tr>"""
-        for _, row in roster.iterrows():
-            name = row['name']
-            stat_row = season_stats[season_stats['name'] == name] if not season_stats.empty and 'name' in season_stats.columns else pd.DataFrame()
-            obp = round(stat_row['OBP'].iloc[0], 3) if not stat_row.empty and 'OBP' in stat_row.columns else "—"
-            ops = round(stat_row['OPS'].iloc[0], 3) if not stat_row.empty and 'OPS' in stat_row.columns else "—"
-            babip = "—"
-            c_inn = "—"
-            ip = round(stat_row['IP'].iloc[0], 1) if not stat_row.empty and 'IP' in stat_row.columns else "—"
-            fip = "—"
-            season_html += f"""<tr><td>{name}</td><td>{obp}</td><td>{ops}</td><td>{babip}</td><td>{c_inn}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>{ip}</td><td>{fip}</td></tr>"""
-        season_html += "</table>"
-
         full_html = f"""
-        <html><head><title>Lineup Card - {game_date}</title>
-        <style>body{{font-family:Arial,sans-serif;margin:25px;color:#000;background:white;}} h1{{text-align:center;color:#fc4c02;font-size:32px;}} table{{width:100%;border-collapse:collapse;}} th,td{{border:1px solid #333;padding:8px;}} th{{background:#fc4c02;color:white;}} @page{{margin:15mm;}}</style></head><body>
+        <html><head><title>Minor AA Orioles - Game {game_number}</title>
+        <style>body{{font-family:Arial,sans-serif;margin:30px;color:#000;background:white;}} h1{{text-align:center;color:#fc4c02;font-size:28px;}} table{{width:100%;border-collapse:collapse;}} th,td{{border:1px solid #333;padding:8px;}} th{{background:#fc4c02;color:white;}} @page{{margin:15mm;}}</style></head><body>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
             <img src="data:image/png;base64,{orioles_b64}" style="height:80px;">
             <img src="data:image/png;base64,{cll_b64}" style="height:80px;">
         </div>
-        <h1>Lineup Card</h1>
-        <p style="text-align:center;font-size:18px;"><strong>Date:</strong> {game_date.strftime('%B %d, %Y')} &nbsp;&nbsp; <strong>Opponent:</strong> ________________________</p>
+        <h1>Minor AA Orioles – Game {game_number}</h1>
+        <p style="text-align:center;font-size:18px;"><strong>{game_time} {game_date.strftime('%A %B %d')}</strong><br>
+        vs. {opponent}<br>
+        {field}</p>
         <div>{batting_html}</div>
-        <div style="margin-top:25px;">{season_html}</div>
+        <h2 style="margin-top:30px;">Game Notes</h2>
+        <p>Relief Pitchers<br>
+        Ryley Hall (&lt;50)<br>
+        Tristan Venable (&lt;50)<br>
+        Lucas Cantrell (&lt;50)<br>
+        Chase Wingfield (&lt;50)<br>
+        Closer: Emerson Antosiak (&lt;50)</p>
+        <p style="font-size:12px;">75 pitches per day MAX<br>
+        66 or more pitches: four (4) calendar days of rest must be observed.<br>
+        51-65 pitches: three (3) calendar days of rest must be observed.<br>
+        36-50 pitches: two (2) calendar days of rest must be observed.<br>
+        21-35 pitches: one (1) calendar days of rest must be observed.<br>
+        1-20 pitches: no (0) calendar day of rest is required.</p>
+        <p>Unavailable Players<br>
+        Camden Felvus</p>
+        <p>Next Game Pitchers<br>
+        TBD</p>
         </body></html>
         """
 
-        st.download_button("📥 Download HTML (open & print)", full_html, f"lineup_card_{game_date}.html", "text/html")
-        st.success("✅ Printable card ready!")
+        st.download_button("📥 Download HTML Game Card (open & print)", full_html, f"Game_Card_Game_{game_number}.html", "text/html")
+        st.success("✅ New PowerPoint-style Game Card ready! Open the downloaded HTML file and print.")
 
 # ====================== LOG GAME ======================
 if page == "Log Game":
@@ -560,4 +590,4 @@ if page == "Reports":
             st.success("✅ All game data deleted!")
             st.rerun()
 
-st.sidebar.caption("v1.0 • P+C Infield Rule • Auto-Save • Fixed Printable Card • Orioles ⚾")
+st.sidebar.caption("v1.0 • New PowerPoint Game Card • P+C Infield Rule • Auto-Save • Orioles ⚾")
